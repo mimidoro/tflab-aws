@@ -1,0 +1,15 @@
+# Make ALL web pods fail for 3 minutes (containers replaced by a pause image).
+# Expect: tflab-syd-web-unhealthy-targets + tflab-syd-alb-no-healthy-targets (tflab-mel- in Melbourne) alarms; UI down
+# in that region (API still answers on /api/*).
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-failure-web
+  namespace: app
+spec:
+  action: pod-failure
+  mode: all
+  selector:
+    namespaces: [app]
+    labelSelectors: { app: web }
+  duration: 3m

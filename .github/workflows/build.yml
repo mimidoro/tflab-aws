@@ -1,0 +1,43 @@
+name: build
+
+# Builds linux/arm64 images on a native ARM runner and pushes to ECR Sydney (replicated to
+# Melbourne). Tags are the commit SHA and immutable; existing tags are skipped.
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  images:
+    runs-on: ubuntu-24.04-arm
+    environment: lab
+    strategy:
+      matrix:
+        image: [web, api]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/tflab-github-actions
+          aws-region: ap-southeast-2
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: build and push tflab/${{ matrix.image }}:${{ github.sha }}
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE: tflab/${{ matrix.image }}
+          TAG: ${{ github.sha }}
+        run: |
+          if aws ecr describe-images --repository-name "$IMAGE" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+            echo "$IMAGE:$TAG already exists - skipping"
+            exit 0
+          fi
+          docker build --platform linux/arm64 --build-arg APP_VERSION="${TAG::7}" \
+            -t "$REGISTRY/$IMAGE:$TAG" "app/${{ matrix.image }}"
+          docker push "$REGISTRY/$IMAGE:$TAG"

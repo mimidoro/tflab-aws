@@ -1,0 +1,45 @@
+name: regression
+
+# Playwright API + UI regression against the live lab. Needs no AWS credentials.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "app = failover hostname, syd/mel = pin to a region"
+        type: choice
+        options: [app, syd, mel]
+  workflow_call:
+    inputs:
+      target:
+        type: string
+        default: app
+
+permissions:
+  contents: read
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: tests/regression
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: test https://${{ inputs.target }}.mimidog.click
+        env:
+          BASE_URL: https://${{ inputs.target }}.mimidog.click
+        run: npx playwright test
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ inputs.target }}
+          path: |
+            tests/regression/playwright-report
+            tests/regression/results
+          retention-days: 7

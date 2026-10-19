@@ -1,0 +1,60 @@
+name: drill
+
+# Run one failure drill (drills/drill.sh list for the catalogue). Destructive drills
+# (region-blackout, failover, promote-replica) need confirm = yes.
+on:
+  workflow_dispatch:
+    inputs:
+      drill:
+        description: Drill to run
+        type: choice
+        options:
+          - pod-kill
+          - web-down
+          - cpu-stress
+          - latency
+          - db-block
+          - node-kill
+          - db-reboot
+          - az-blackout
+          - failover
+          - region-blackout
+          - promote-replica
+          - restore
+      region:
+        description: Region (failover/region-blackout = syd, promote-replica = mel)
+        type: choice
+        options: [syd, mel]
+      confirm:
+        description: Type "yes" for destructive drills
+        type: string
+        default: "no"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tflab-lab
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    environment: lab
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.x"
+          terraform_wrapper: false
+      - uses: azure/setup-kubectl@v4
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/tflab-github-actions
+          aws-region: ap-southeast-2
+      - name: drills/drill.sh ${{ inputs.drill }} ${{ inputs.region }}
+        env:
+          ASSUME_YES: ${{ inputs.confirm == 'yes' && '1' || '0' }}
+        run: drills/drill.sh "${{ inputs.drill }}" "${{ inputs.region }}" < /dev/null

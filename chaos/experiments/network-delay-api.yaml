@@ -1,0 +1,19 @@
+# Add 1.5s latency to every API pod for 5 minutes.
+# Expect: tflab-syd-api-latency-p95 (or tflab-mel-) alarm fires within ~2-3 min, clears after.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-delay-api
+  namespace: app
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces: [app]
+    labelSelectors: { app: api }
+  delay:
+    latency: 1500ms
+    jitter: 100ms
+    correlation: "25"
+  direction: to
+  duration: 5m

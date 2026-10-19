@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cwagent-config
+  namespace: {{ .Release.Namespace }}
+data:
+  # Only a handful of metrics are turned into CloudWatch metrics (metric_selectors) to keep
+  # custom-metric cost to cents per lab session. Everything else stays in the log group only.
+  cwagentconfig.json: |
+    {
+      "agent": { "region": "{{ .Values.region }}" },
+      "logs": {
+        "force_flush_interval": 5,
+        "metrics_collected": {
+          "prometheus": {
+            "cluster_name": "{{ .Values.clusterName }}",
+            "log_group_name": "{{ .Values.logGroupName }}",
+            "prometheus_config_path": "/etc/prometheusconfig/prometheus.yaml",
+            "emf_processor": {
+              "metric_declaration_dedup": true,
+              "metric_namespace": "tflab/Cilium",
+              "metric_declaration": [
+                {
+                  "source_labels": ["job"],
+                  "label_matcher": "^hubble$",
+                  "dimensions": [["ClusterName"]],
+                  "metric_selectors": ["^hubble_drop_total$", "^hubble_flows_processed_total$"]
+                },
+                {
+                  "source_labels": ["job"],
+                  "label_matcher": "^cilium-agent$",
+                  "dimensions": [["ClusterName"]],
+                  "metric_selectors": ["^cilium_unreachable_nodes$", "^cilium_unreachable_health_endpoints$"]
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: {{ .Release.Namespace }}
+data:
+  # Cilium agent pods run on the host network, so pod IP == node IP.
+  prometheus.yaml: |
+    global:
+      scrape_interval: 30s
+      scrape_timeout: 10s
+    scrape_configs:
+      - job_name: cilium-agent
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces: { names: [kube-system] }
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_k8s_app]
+            regex: cilium
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: $1:9962
+          - target_label: ClusterName
+            replacement: {{ .Values.clusterName }}
+      - job_name: hubble
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces: { names: [kube-system] }
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_k8s_app]
+            regex: cilium
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: $1:9965
+          - target_label: ClusterName
+            replacement: {{ .Values.clusterName }}

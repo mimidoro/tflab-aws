@@ -1,0 +1,6 @@
+apiVersion: v2
+name: cwagent
+description: CloudWatch agent scraping Cilium and Hubble Prometheus metrics into CloudWatch (tflab)
+type: application
+version: 0.1.0
+appVersion: "latest"
