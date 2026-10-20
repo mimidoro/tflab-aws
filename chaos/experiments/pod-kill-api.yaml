@@ -1,0 +1,12 @@
+# Kill one API pod. Expect: Deployment replaces it in seconds; no alarm (PDB + 2+ replicas).
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-kill-api
+  namespace: app
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces: [app]
+    labelSelectors: { app: api }

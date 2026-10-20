@@ -1,0 +1,34 @@
+# All values below are overridden by Terraform (infra/modules/platform/workloads.tf).
+regionLabel: ""
+isPrimary: true
+awsRegion: ""
+
+image:
+  web: ""
+  api: ""
+
+web:
+  nodePort: 30080
+  minReplicas: 2
+  maxReplicas: 3
+  resources:
+    requests: { cpu: 50m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 64Mi }
+
+api:
+  nodePort: 30081
+  minReplicas: 2
+  maxReplicas: 3
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+
+db:
+  host: ""
+  name: tflab
+  user: tflab_api
+  masterSecretArn: "" # primary only - used by the db-init Job
+
+networkPolicy:
+  enabled: true
+  vpcCidr: ""

@@ -1,0 +1,17 @@
+# Cilium deny policy: cut the API off from PostgreSQL. Applied by: drills/drill.sh db-block (syd or mel), and the failover / promote-replica drills.
+# Expect within ~1-2 min:
+#   - Hubble drops        -> tflab-syd-|tflab-mel-cilium-packet-drops alarm
+#   - /api/ready = 503    -> (Sydney only) Route 53 health check fails -> app.mimidog.click fails over to Melbourne
+#   - /api/items = 5xx    -> tflab-syd-|tflab-mel-alb-target-5xx alarm
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: drill-db-block
+  namespace: app
+spec:
+  endpointSelector:
+    matchLabels: { app: api }
+  egressDeny:
+    - toCIDR: ["0.0.0.0/0"]
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]

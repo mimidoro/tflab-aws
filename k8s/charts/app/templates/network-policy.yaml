@@ -1,0 +1,68 @@
+{{- if .Values.networkPolicy.enabled }}
+# Least-privilege pod networking enforced by Cilium. Anything not allowed here is dropped and
+# shows up in Hubble (hubble_drop_total -> CloudWatch alarm).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: web
+spec:
+  endpointSelector:
+    matchLabels: { app: web }
+  ingress:
+    - fromEntities: [world, host, remote-node]
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+  egress:
+    - {} # an empty rule matches nothing => default-deny egress (static site, no outbound calls)
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: api
+spec:
+  endpointSelector:
+    matchLabels: { app: api }
+  ingress:
+    - fromEntities: [world, host, remote-node]
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: ANY }]
+    - toCIDR: [{{ .Values.networkPolicy.vpcCidr | quote }}]
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    - toCIDR: ["169.254.170.23/32"] # EKS Pod Identity agent
+      toPorts:
+        - ports: [{ port: "80", protocol: TCP }]
+{{- if .Values.isPrimary }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: db-init
+spec:
+  endpointSelector:
+    matchLabels: { app: db-init }
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: ANY }]
+    - toCIDR: [{{ .Values.networkPolicy.vpcCidr | quote }}]
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    - toCIDR: ["169.254.170.23/32"]
+      toPorts:
+        - ports: [{ port: "80", protocol: TCP }]
+    - toEntities: [world] # Secrets Manager API via NAT
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+{{- end }}
+{{- end }}

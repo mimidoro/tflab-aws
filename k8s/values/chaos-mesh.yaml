@@ -1,0 +1,21 @@
+# Chaos Mesh on EKS with Cilium overlay networking.
+# The controller serves admission webhooks, which the EKS control plane must reach - it cannot
+# reach overlay pod IPs, so the controller runs on the host network. Its default webhook port
+# (10250) clashes with the kubelet there, so it moves to 9443 (already allowed from the control
+# plane by the EKS module's recommended node security group rules).
+controllerManager:
+  hostNetwork: true
+  replicaCount: 1
+  env:
+    WEBHOOK_PORT: 9443
+    METRICS_PORT: 10080
+
+chaosDaemon:
+  runtime: containerd
+  socketPath: /run/containerd/containerd.sock
+
+dashboard:
+  create: false # use kubectl + the YAML in chaos/experiments; keeps the attack surface small
+
+dnsServer:
+  create: false

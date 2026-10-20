@@ -1,0 +1,11 @@
+clusterName: ""
+region: ""
+logGroupName: ""
+
+# Tracks "latest" deliberately for a short-lived lab. For anything longer-lived, pin a digest
+# (PLAYBOOK > Hardening backlog).
+image: public.ecr.aws/cloudwatch-agent/cloudwatch-agent:latest
+
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits: { cpu: 200m, memory: 256Mi }

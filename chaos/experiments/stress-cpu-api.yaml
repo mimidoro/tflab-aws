@@ -1,0 +1,18 @@
+# Burn CPU in all API pods for 5 minutes.
+# Expect: HPA scales api towards its max (Sydney 3, Melbourne 2); watch with
+#   kubectl --context tflab-syd -n app get hpa -w
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: stress-cpu-api
+  namespace: app
+spec:
+  mode: all
+  selector:
+    namespaces: [app]
+    labelSelectors: { app: api }
+  stressors:
+    cpu:
+      workers: 1
+      load: 90
+  duration: 5m

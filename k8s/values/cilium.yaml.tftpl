@@ -1,0 +1,53 @@
+# Cilium as the only CNI on EKS, overlay (tunnel) mode - NOT ENI mode.
+#   - Pod IPs come from Cilium's own cluster-pool (not the VPC), carried between nodes over VXLAN.
+#   - kube-proxy is replaced by Cilium's eBPF service handling (EKS module installs no kube-proxy).
+#   - Pod egress to the VPC/internet is masqueraded to the node IP (eBPF masquerade).
+# Caveat: the EKS control plane cannot reach overlay pod IPs, so webhook/APIService servers
+# (metrics-server, Chaos Mesh) run on the host network.
+
+cluster:
+  name: ${cluster_name}
+
+k8sServiceHost: ${api_host}
+k8sServicePort: 443
+kubeProxyReplacement: true
+
+routingMode: tunnel
+tunnelProtocol: vxlan
+
+ipam:
+  mode: cluster-pool
+  operator:
+    clusterPoolIPv4PodCIDRList:
+      - ${pod_cidr}
+    clusterPoolIPv4MaskSize: 24
+
+enableIPv4Masquerade: true
+bpf:
+  masquerade: true
+
+eni:
+  enabled: false
+
+operator:
+  replicas: 1
+  prometheus:
+    enabled: true
+
+prometheus:
+  enabled: true # agent metrics on :9962
+
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true # kubectl -n kube-system port-forward svc/hubble-ui 12000:80
+  metrics:
+    port: 9965
+    enabled:
+      - dns
+      - drop
+      - tcp
+      - flow
+      - icmp

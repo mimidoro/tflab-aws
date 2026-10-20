@@ -1,0 +1,26 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfplan
+.terraform.lock.hcl.bak
+
+# Registrant contact details for scripted domain registration (never commit)
+contact.json
+
+# Node
+node_modules/
+dist/
+tests/regression/playwright-report/
+tests/regression/results/
+tests/regression/test-results/
+
+# .NET
+bin/
+obj/
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/

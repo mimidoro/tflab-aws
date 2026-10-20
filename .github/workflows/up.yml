@@ -1,0 +1,41 @@
+name: up
+
+# Stand up the whole lab from main: build images -> terraform apply -> regression suite.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tflab-lab
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  apply:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: lab
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.x"
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/tflab-github-actions
+          aws-region: ap-southeast-2
+          role-duration-seconds: 7200
+      - run: scripts/up.sh "${{ github.sha }}"
+
+  regression:
+    needs: apply
+    uses: ./.github/workflows/regression.yml
+    with:
+      target: app

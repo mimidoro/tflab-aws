@@ -1,0 +1,6 @@
+apiVersion: v2
+name: tflab-app
+description: React web + .NET API for the tflab-aws lab
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

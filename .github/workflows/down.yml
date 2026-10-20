@@ -1,0 +1,36 @@
+name: down
+
+# DRAIN teardown. Runs on demand and every night as a safety net for forgotten sessions.
+on:
+  workflow_dispatch:
+  schedule:
+    # 10:00 UTC = 23:00 NZDT (late Sep - early Apr) / 22:00 NZST (rest of the year).
+    # Scheduled runs only fire from the default branch.
+    - cron: "0 10 * * *"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tflab-lab
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    environment: lab
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.x"
+          terraform_wrapper: false
+      - uses: azure/setup-kubectl@v4
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/tflab-github-actions
+          aws-region: ap-southeast-2
+          role-duration-seconds: 7200
+      - run: scripts/down.sh

@@ -1,0 +1,76 @@
+name: ci
+
+# Static checks only - no AWS credentials, runs on every PR.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.x"
+      - name: fmt
+        run: terraform fmt -check -recursive -diff
+      - name: validate bootstrap
+        run: terraform -chdir=bootstrap init -backend=false -input=false && terraform -chdir=bootstrap validate
+      - name: validate infra
+        run: terraform -chdir=infra init -backend=false -input=false && terraform -chdir=infra validate
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/setup-helm@v4
+      - name: lint charts
+        run: |
+          helm lint k8s/charts/app \
+            --set image.web=example/web:1 --set image.api=example/api:1 \
+            --set db.host=db.example --set networkPolicy.vpcCidr=10.0.0.0/16 --set awsRegion=ap-southeast-2
+          helm lint k8s/charts/cwagent --set clusterName=tflab-syd --set region=ap-southeast-2 --set logGroupName=/tflab/x
+
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet build app/api -c Release
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm ci && npm run build
+        working-directory: app/web
+
+  regression-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: type-check and list tests
+        working-directory: tests/regression
+        run: |
+          npm ci
+          npx --yes -p typescript@5 tsc -p .
+          npx playwright test --list
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: shellcheck -x -S warning scripts/*.sh drills/*.sh bootstrap/bootstrap.sh
