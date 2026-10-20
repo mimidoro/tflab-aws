@@ -26,6 +26,4 @@ Next:
 Bootstrap step B3 creates a GitHub environment + variable, which needs repo ADMIN rights.
 The codespace's built-in token can't do that, so sign gh in as yourself first:
   unset GITHUB_TOKEN && gh auth login   # (locally: just gh auth login)
-Second repo (granted on codespace creation):
-  git clone https://github.com/mimidoro/tflab-azure ../tflab-azure
 EOF
