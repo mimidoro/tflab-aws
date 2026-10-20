@@ -30,3 +30,4 @@
 | 2026-10-21 | Setup: account model | standalone account, Identity Center available | AWS "project" account: one region, Identity Center denied | activated advanced features; `tflab-guardrails` SCP replaces `AdvancedModeRegionRestrictionSecurityControlPolicy`; CLI via `aws login --remote` |
 | 2026-10-21 | Setup: Spot | Spot might stay denied after activation | no SCP denies Spot after activation | design kept (Graviton Spot) |
 | 2026-10-21 | Setup: CLI | `aws login` picks the right account | picked the management account first | bootstrap now refuses the management account |
+| 2026-10-21 | First `up`: OIDC | sub = `repo:mimidoro/tflab-aws:environment:lab` | sub = `repo:mimidoro@7311162/tflab-aws@1426218913:environment:lab` (immutable IDs) | trust policy accepts the ID form (plus the plain form) |

@@ -4,6 +4,18 @@ variable "github_repo" {
   default     = "mimidoro/tflab-aws"
 }
 
+variable "github_owner_id" {
+  description = "Immutable GitHub owner ID - newer GitHub OIDC tokens embed it in the sub claim (owner@id/repo@id)."
+  type        = string
+  default     = "7311162"
+}
+
+variable "github_repo_id" {
+  description = "Immutable GitHub repository ID (gh api repos/OWNER/REPO --jq .id)."
+  type        = string
+  default     = "1426218913"
+}
+
 variable "github_environment" {
   description = "GitHub environment that AWS-facing jobs run in. Only jobs in this environment can assume the role."
   type        = string
