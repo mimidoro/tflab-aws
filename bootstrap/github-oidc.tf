@@ -2,6 +2,11 @@
 # Trust is pinned to ONE repo and ONE GitHub environment ("lab"), which is itself restricted
 # to the main branch (bootstrap.sh step B3).
 
+locals {
+  gh_owner = split("/", var.github_repo)[0]
+  gh_repo  = split("/", var.github_repo)[1]
+}
+
 resource "aws_iam_openid_connect_provider" "github" {
   url            = "https://token.actions.githubusercontent.com"
   client_id_list = ["sts.amazonaws.com"]
@@ -19,10 +24,17 @@ data "aws_iam_policy_document" "github_trust" {
       variable = "token.actions.githubusercontent.com:aud"
       values   = ["sts.amazonaws.com"]
     }
+    # GitHub now issues sub claims with immutable IDs:
+    #   repo:mimidoro@7311162/tflab-aws@1426218913:environment:lab
+    # The ID form survives renames and can't be claimed by a re-created repo of the same name.
+    # The plain form is kept so older-style tokens still work.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:environment:${var.github_environment}"]
+      values = [
+        "repo:${local.gh_owner}@${var.github_owner_id}/${local.gh_repo}@${var.github_repo_id}:environment:${var.github_environment}",
+        "repo:${var.github_repo}:environment:${var.github_environment}",
+      ]
     }
   }
 }
