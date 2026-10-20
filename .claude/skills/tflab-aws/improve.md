@@ -32,3 +32,5 @@
 | 2026-10-21 | Setup: CLI | `aws login` picks the right account | picked the management account first | bootstrap now refuses the management account |
 | 2026-10-21 | First `up`: OIDC | sub = `repo:mimidoro/tflab-aws:environment:lab` | sub = `repo:mimidoro@7311162/tflab-aws@1426218913:environment:lab` (immutable IDs) | trust policy accepts the ID form (plus the plain form) |
 | 2026-10-21 | Observability | your console role can use kubectl/Hubble after a GitHub-run apply | only the GitHub role + apply caller were cluster admins | `console_admin_role_names` (AccountFullAccessRole) added to EKS access entries; `scripts/observe.sh`, cilium + hubble CLIs in the dev container |
+| 2026-10-21 | First `up`: guardrails | replica create allowed (db.t4g.micro) | SCP denied CreateDBInstanceReadReplica on the source DB (condition key absent) | `Null` guard on the EC2/RDS size-cap statements |
+| 2026-10-21 | First `up`: NAT ASG | instance launches | `Authentication Failure` on first launch | troubleshooting row + CloudTrail check; re-run |
