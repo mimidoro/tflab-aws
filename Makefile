@@ -7,7 +7,7 @@ DRILL ?= list
 REGION ?= syd
 TARGET ?= app
 
-.PHONY: help bootstrap build up down drill test leftovers kubeconfig fmt
+.PHONY: help bootstrap build up down drill test leftovers kubeconfig observe hubble fmt
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -35,6 +35,12 @@ leftovers: ## report anything billable still running
 
 kubeconfig: ## add tflab-syd / tflab-mel kubectl contexts
 	./scripts/kubeconfig.sh
+
+observe: ## nodes, Cilium status, Hubble drops: make observe REGION=syd
+	./scripts/observe.sh $(REGION)
+
+hubble: ## Hubble UI on :12000: make hubble REGION=syd
+	./scripts/observe.sh $(REGION) ui
 
 fmt: ## terraform fmt
 	terraform fmt -recursive

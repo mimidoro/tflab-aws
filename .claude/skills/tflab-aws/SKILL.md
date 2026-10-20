@@ -29,6 +29,7 @@ for architecture, alarms and recovery; the files in this skill folder are the st
 | break something / demo alarms / measure RTO, RPO   | `drills.md`     |
 | check front end + API still work                   | `regression.md` |
 | stop paying / end the session                      | `teardown.md`   |
+| look inside: nodes, Cilium, Hubble flows, encryption | `observe.md`  |
 | something failed                                   | `troubleshooting.md` |
 | improve this skill or the lab                      | `improve.md`    |
 

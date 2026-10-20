@@ -15,7 +15,7 @@
 | 1 | Pin GitHub Actions to commit SHAs and the CloudWatch agent image to a digest | supply-chain risk |
 | 2 | Automate DB failover: Route 53 alarm -> EventBridge -> Lambda promote (with fencing) | RTO without a human |
 | 3 | Add k6 load test job to prove "high throughput" numbers (RPS at p95 < 300 ms) | performance evidence |
-| 4 | Cilium mutual authentication (mTLS) between web/api | zero-trust story |
+| 4 | Cilium WireGuard transparent encryption (pod-to-pod), then mutual authentication between web/api | encrypted east-west traffic, zero-trust story |
 | 5 | Permissions boundary on all tflab-* roles instead of policy-ARN deny list | stronger IAM guard rail |
 | 6 | Infracost in CI: cost diff on every PR | cost visibility |
 | 7 | Failback runbook that re-seeds Sydney from Melbourne instead of full rebuild | realistic DR |
@@ -31,3 +31,4 @@
 | 2026-10-21 | Setup: Spot | Spot might stay denied after activation | no SCP denies Spot after activation | design kept (Graviton Spot) |
 | 2026-10-21 | Setup: CLI | `aws login` picks the right account | picked the management account first | bootstrap now refuses the management account |
 | 2026-10-21 | First `up`: OIDC | sub = `repo:mimidoro/tflab-aws:environment:lab` | sub = `repo:mimidoro@7311162/tflab-aws@1426218913:environment:lab` (immutable IDs) | trust policy accepts the ID form (plus the plain form) |
+| 2026-10-21 | Observability | your console role can use kubectl/Hubble after a GitHub-run apply | only the GitHub role + apply caller were cluster admins | `console_admin_role_names` (AccountFullAccessRole) added to EKS access entries; `scripts/observe.sh`, cilium + hubble CLIs in the dev container |

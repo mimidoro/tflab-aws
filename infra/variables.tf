@@ -25,6 +25,12 @@ variable "api_allowed_cidrs" {
   default     = ["0.0.0.0/0"]
 }
 
+variable "console_admin_role_names" {
+  description = "IAM role names people sign in with (console / aws login) that get EKS cluster admin."
+  type        = list(string)
+  default     = ["AccountFullAccessRole"]
+}
+
 variable "extra_admin_arns" {
   description = "Additional IAM principals granted cluster admin (the GitHub role and whoever runs apply are added automatically)."
   type        = list(string)
