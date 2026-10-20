@@ -29,3 +29,10 @@ make kubeconfig # contexts tflab-syd, tflab-mel
 - First run only: confirm the three new SNS subscription emails (Sydney, Melbourne, us-east-1)
 
 If anything fails, go to `troubleshooting.md`.
+
+## Show the user their site
+
+Once verified, give them: **https://app.mimidog.click** (failover name), plus the pinned
+https://syd.mimidog.click / https://mel.mimidog.click. The page shows the serving region, pod,
+database writability and an add/list items form. API reference: README > "The live site".
+Remind them it stops answering after `down` / the nightly destroy.
