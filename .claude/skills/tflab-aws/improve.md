@@ -34,3 +34,4 @@
 | 2026-10-21 | Observability | your console role can use kubectl/Hubble after a GitHub-run apply | only the GitHub role + apply caller were cluster admins | `console_admin_role_names` (AccountFullAccessRole) added to EKS access entries; `scripts/observe.sh`, cilium + hubble CLIs in the dev container |
 | 2026-10-21 | First `up`: guardrails | replica create allowed (db.t4g.micro) | SCP denied CreateDBInstanceReadReplica on the source DB (condition key absent) | `Null` guard on the EC2/RDS size-cap statements |
 | 2026-10-21 | First `up`: NAT ASG | instance launches | `Authentication Failure` on first launch | troubleshooting row + CloudTrail check; re-run |
+| 2026-10-21 | First `up`: RDS replica | replica of a primary with RDS-managed password | AWS rejects postgres replicas when ManageMasterUserPassword is on | write-only password into own Secrets Manager secret (never in state) |

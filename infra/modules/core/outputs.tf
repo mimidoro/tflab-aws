@@ -60,7 +60,7 @@ output "db_resource_id" {
 
 output "db_master_secret_arn" {
   description = "Only set on the primary."
-  value       = try(aws_db_instance.this.master_user_secret[0].secret_arn, null)
+  value       = try(aws_secretsmanager_secret.db_master[0].arn, null)
 }
 
 output "alb_dns_name" {
