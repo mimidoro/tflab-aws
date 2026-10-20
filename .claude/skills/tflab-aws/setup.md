@@ -1,6 +1,7 @@
 # Setup (one time per AWS account)
 
-Prereqs on the machine: `aws` v2, `terraform` >= 1.10, `kubectl`, `gh` (logged in as repo owner),
+Prereqs: open the repo in a Codespace / dev container (all tools pre-installed; run
+`unset GITHUB_TOKEN && gh auth login` there), or install `aws` v2, `terraform` >= 1.10, `kubectl`, `gh` (logged in as repo owner),
 `jq`, Node 22.
 
 Run from the repo root, signed in as an IAM Identity Center admin (never root):

@@ -21,6 +21,7 @@ flowchart LR
 ## Quick start
 
 ```bash
+# Tools: open in a GitHub Codespace (or VS Code dev container) - everything is pre-installed
 ./bootstrap/bootstrap.sh     # once per account (manual steps are explained inline)
 make build && make up        # ~30-40 min, ~USD 0.50-0.70/hr while running
 make drill                   # list failure drills
