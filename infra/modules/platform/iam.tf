@@ -37,7 +37,7 @@ resource "aws_eks_pod_identity_association" "api" {
   role_arn        = aws_iam_role.api.arn
 }
 
-# --- db-init Job (primary only): reads the RDS-managed master secret once to create tflab_api --
+# --- db-init Job (primary only): reads the tflab master secret once to create tflab_api --------
 resource "aws_iam_role" "db_init" {
   count              = var.is_primary ? 1 : 0
   name               = "${var.name}-db-init"

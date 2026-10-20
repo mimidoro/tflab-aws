@@ -331,7 +331,7 @@ creates are denied, destroys still work.
 |---|---|
 | **Data classification** | Synthetic test data only (`items` table). Never load client or SkyCity data into this lab. |
 | **Origin -> processing -> storage** | Browser -> ALB (TLS 1.2/1.3) -> pods -> RDS (TLS verify-full, encrypted storage). State in S3 (SSE, versioned, TLS-only). |
-| **Identity** | GitHub OIDC -> role pinned to repo + `lab` environment (main only). Pods use EKS Pod Identity. API uses IAM DB auth - no app password exists. Master password held by RDS in Secrets Manager, read only by the `db-init` Job. |
+| **Identity** | GitHub OIDC -> role pinned to repo + `lab` environment (main only). Pods use EKS Pod Identity. API uses IAM DB auth - no app password exists. Master password generated ephemerally and written only to the DB and Secrets Manager secret `tflab-syd-pg-master` via write-only arguments (never in Terraform state); read only by the `db-init` Job. (RDS-managed master passwords block cross-region replicas for PostgreSQL.) |
 | **Least privilege** | Deploy role = PowerUser + IAM limited to `tflab-*`, cannot modify itself or the kill switch, cannot attach admin policies. Pod roles scoped to one DB user / one secret / CloudWatch agent. Cilium policies default-deny pod egress. |
 | **Secrets** | None in git, none in GitHub (only the account ID variable). |
 | **Exposure** | Public: ALB 80/443 and the EKS API endpoint (IAM-authenticated; narrow `api_allowed_cidrs` to your IP for extra safety). RDS private. |

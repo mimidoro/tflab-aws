@@ -3,7 +3,10 @@
 #   Melbourne: cross-region read replica - async, typically seconds of lag => RPO well under 15 min.
 # Failover = promote the Melbourne replica (drills/promote-replica.sh), which takes ~5-10 min => RTO < 15 min.
 # Auth: IAM database authentication for the API (no app passwords anywhere).
-# The master password is generated and held by RDS in Secrets Manager (manage_master_user_password).
+# Master password: generated ephemerally and written ONLY to the DB and to our own Secrets Manager
+# secret via write-only arguments - it never lands in Terraform state or plan output.
+# (RDS-managed master passwords - manage_master_user_password - can't be used: AWS rejects read
+#  replicas of a postgres source with it enabled.) Only the db-init Job reads the secret, once.
 
 resource "aws_security_group" "db" {
   name        = "${var.name}-db"
@@ -28,17 +31,41 @@ resource "aws_kms_key" "replica" {
   enable_key_rotation     = true
 }
 
+ephemeral "random_password" "db_master" {
+  count   = var.is_primary ? 1 : 0
+  length  = 32
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "db_master" {
+  count                   = var.is_primary ? 1 : 0
+  name                    = "${var.name}-pg-master"
+  description             = "tflab master credentials for ${var.name}-pg (read by the db-init Job only)"
+  recovery_window_in_days = 0 # lab: delete immediately on destroy so the name is reusable on the next up
+}
+
+resource "aws_secretsmanager_secret_version" "db_master" {
+  count     = var.is_primary ? 1 : 0
+  secret_id = aws_secretsmanager_secret.db_master[0].id
+  secret_string_wo = jsonencode({
+    username = "tflab_admin"
+    password = ephemeral.random_password.db_master[0].result
+  })
+  secret_string_wo_version = 1
+}
+
 resource "aws_db_instance" "this" {
   identifier     = "${var.name}-pg"
   instance_class = var.db_instance_class
 
   # Primary-only settings (a replica inherits these from its source)
-  engine                      = var.is_primary ? "postgres" : null
-  engine_version              = var.is_primary ? "17" : null
-  allocated_storage           = var.is_primary ? 20 : null
-  db_name                     = var.is_primary ? "tflab" : null
-  username                    = var.is_primary ? "tflab_admin" : null
-  manage_master_user_password = var.is_primary ? true : null
+  engine              = var.is_primary ? "postgres" : null
+  engine_version      = var.is_primary ? "17" : null
+  allocated_storage   = var.is_primary ? 20 : null
+  db_name             = var.is_primary ? "tflab" : null
+  username            = var.is_primary ? "tflab_admin" : null
+  password_wo         = var.is_primary ? ephemeral.random_password.db_master[0].result : null
+  password_wo_version = var.is_primary ? 1 : null
 
   # Replica-only settings
   replicate_source_db = var.is_primary ? null : var.db_source_arn
