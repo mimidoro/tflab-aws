@@ -185,6 +185,39 @@ Tooling: `aws` v2 (>= 2.32 for `aws login`), `terraform` >= 1.10, `kubectl`, `he
 | **PROVE** | Actions > `regression` | `make test TARGET=app` |
 | **DOWN** | Actions > `down` (also nightly 10:00 UTC) | `make down` |
 
+### The live site (ONE-TWO-API)
+
+While the lab is up you get a real HTTPS website. It stops answering after `down` or the nightly destroy, until the next `up`.
+
+| URL | What you get |
+|---|---|
+| **https://app.mimidog.click** | **One** name for users: Route 53 sends you to Sydney, or to Melbourne during a failover |
+| https://syd.mimidog.click | **Two** region-pinned names: Sydney (primary, writable) |
+| https://mel.mimidog.click | Melbourne (standby, read-only until promoted) |
+
+**The page shows** which region and pod served you, whether the database is writable, and a small form to add and list items.
+
+**The API** (paths are the same on all three hostnames):
+
+| Method | Path | Returns |
+|---|---|---|
+| GET | `/api/healthz` | `{"status":"ok"}` - process alive (ALB target health) |
+| GET | `/api/ready` | `{"db":"ok","writable":true}`, or 503 when the DB is unreachable - Route 53 failover health check |
+| GET | `/api/info` | region, pod, node, configured role, `dbWritable`, version |
+| GET | `/api/items` | latest 50 items |
+| GET | `/api/items/{id}` | one item, or 404 |
+| POST | `/api/items` `{"text":"..."}` | 201 + item; 400 if empty or over 200 chars; 503 on a read-only standby |
+| DELETE | `/api/items/{id}` | 204, 404, or 503 on a read-only standby |
+
+```bash
+curl -s https://app.mimidog.click/api/info  | jq     # region, pod, node, dbWritable
+curl -s https://app.mimidog.click/api/items | jq     # latest 50 items
+curl -s -X POST https://app.mimidog.click/api/items \
+  -H 'Content-Type: application/json' -d '{"text":"hello"}'
+```
+
+**Watch it fail over:** run `drills/drill.sh failover syd --yes` (and `drills/rto-watch.sh` in a second terminal). The "Served by" region on the site flips to **Melbourne** within about 1-2 minutes, then fails back on its own.
+
 ---
 
 ## 6. Drill catalogue (PANDA-R)
