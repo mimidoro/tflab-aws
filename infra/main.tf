@@ -18,6 +18,14 @@ data "aws_iam_session_context" "current" {
   arn      = data.aws_caller_identity.current.arn
 }
 
+# The role people use day to day (console + `aws login`). In an AWS project account that is
+# AccountFullAccessRole. Looked up by name so its IAM path is right; an empty match is fine.
+data "aws_iam_roles" "console_admins" {
+  provider   = aws.syd
+  for_each   = toset(var.console_admin_role_names)
+  name_regex = "^${each.value}$"
+}
+
 data "aws_route53_zone" "this" {
   provider = aws.syd
   name     = var.domain_name
@@ -27,9 +35,11 @@ locals {
   account_id      = data.aws_caller_identity.current.account_id
   github_role_arn = "arn:aws:iam::${local.account_id}:role/tflab-github-actions"
 
-  # Cluster admins: GitHub Actions role + whoever is running apply (+ optional extras). De-duplicated.
+  # Cluster admins: GitHub Actions role + whoever is running apply + your console role
+  # (so kubectl / Hubble / the EKS console work after a GitHub-run apply) + optional extras.
   admin_arns = distinct(compact(concat(
     [local.github_role_arn, data.aws_iam_session_context.current.issuer_arn],
+    flatten([for d in data.aws_iam_roles.console_admins : tolist(d.arns)]),
     var.extra_admin_arns,
   )))
 
