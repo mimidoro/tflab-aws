@@ -6,8 +6,8 @@
 # equivalent (Bx) where one exists. Steps already done are detected and skipped, so the
 # script is safe to re-run.
 #
-# Memory hook - "BUILD-RIG":  Budget, Upgrade, Identity, Location (Melbourne), Domain,
-#                             Remote state, IAM/ECR/guard (terraform), GitHub
+# Memory hook - "A-BUILD-RIG": Activate (M0/M0b), Budget, Upgrade, Identity, Location (Melbourne),
+#                             Domain, Remote state, IAM/ECR/guard (terraform), GitHub
 #
 # Usage:  ./bootstrap/bootstrap.sh            (run from the repo root, signed in as an admin)
 # =====================================================================================
@@ -42,18 +42,37 @@ done
 # -------------------------------------------------------------------------------------
 
 # -------------------------------------------------------------------------------------
-# M3  ADMIN IDENTITY (manual) - never use the root user for day-to-day work
-#     Console: IAM Identity Center (region ap-southeast-2) > Enable
-#       > Users > Add user (your email) > Permission sets > Create "AdministratorAccess"
-#       > AWS accounts > assign the user + permission set
-#     Then locally:  aws configure sso   (profile name e.g. tflab-admin)
-#                    export AWS_PROFILE=tflab-admin && aws sso login
-#     Also: enable MFA on the root user and lock its credentials away.
+# This account is an AWS "project" account (new AWS experience, AWS Builder ID sign-in).
+# Until advanced features are activated, AWS-managed SCPs allow ONE workload region and deny
+# Spot - the two-region lab cannot run. Steps M0/M0b unlock it (once, irreversible).
+#
+# M0  ACTIVATE ADVANCED FEATURES (manual, IRREVERSIBLE)
+#     https://settings.aws.com > Projects > Actions > Explore advanced features
+#       - Team name: becomes the IAM Identity Center instance name (e.g. mimidog)
+#       - Management account email: an address NOT used by any AWS account; Gmail plus-addressing
+#         works, e.g. cwdyang888+aws-mgmt@gmail.com. Verify it.
+#       - Review and complete activation > confirm
+#     Effects: you own the organization and its SCPs; AWS spend limits are REMOVED for good
+#     (B2's budget + USD 90 kill switch and the nightly destroy replace them); opt-in regions
+#     become available. Immediately: sign in to the new management account as root and add MFA.
+#
+# M0b ORG GUARDRAILS (scripted, run in the MANAGEMENT account - see the script for the console way)
+#     ./bootstrap/org-guardrails.sh            # report
+#     ./bootstrap/org-guardrails.sh --apply    # Sydney + Melbourne + us-east-1 only, Spot allowed,
+#                                              # EC2/RDS size caps; detaches AWS's plan SCP
+#
+# M3  CLI IDENTITY (manual) - never root, never access keys
+#     Winner:   aws login --remote --profile tflab-admin   (AWS CLI >= 2.32; uses your console
+#               sign-in; open the URL it prints, paste the code back; lasts up to 12 h)
+#     Runner-up: IAM Identity Center created by M0 (it lives in us-east-1): assign your user the
+#               AdministratorAccess permission set on this account, then
+#               aws configure sso --use-device-code   (SSO region us-east-1)
+#     Then:     export AWS_PROFILE=tflab-admin
 # -------------------------------------------------------------------------------------
 say "M3  Checking caller identity"
 CALLER_ARN=$(aws sts get-caller-identity --query Arn --output text)
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-[[ "$CALLER_ARN" == *":root" ]] && die "You are signed in as ROOT. Complete M3 and use an Identity Center admin."
+[[ "$CALLER_ARN" == *":root" ]] && die "You are signed in as ROOT. Use 'aws login --remote' with your normal console sign-in (M3)."
 ok "account $ACCOUNT_ID as $CALLER_ARN"
 
 # -------------------------------------------------------------------------------------
@@ -62,15 +81,23 @@ ok "account $ACCOUNT_ID as $CALLER_ARN"
 #     Scripted equivalent:
 # -------------------------------------------------------------------------------------
 say "M4  Melbourne ($STANDBY_REGION) opt-in"
-status=$(aws account get-region-opt-status --region-name "$STANDBY_REGION" --query RegionOptStatus --output text)
+status=$(aws account get-region-opt-status --region-name "$STANDBY_REGION" --query RegionOptStatus --output text 2>/dev/null) \
+  || die "Region APIs denied - advanced features not activated yet. Do M0 + M0b (see comments above)."
 if [[ "$status" != "ENABLED" && "$status" != "ENABLED_BY_DEFAULT" ]]; then
-  [[ "$status" == "DISABLED" ]] && aws account enable-region --region-name "$STANDBY_REGION"
+  if [[ "$status" == "DISABLED" ]]; then
+    aws account enable-region --region-name "$STANDBY_REGION" \
+      || die "enable-region denied - an SCP still blocks it. Do M0 + M0b."
+  fi
   echo "   enabling (usually a few minutes, can take longer)..."
   until [[ "$(aws account get-region-opt-status --region-name "$STANDBY_REGION" --query RegionOptStatus --output text)" == "ENABLED" ]]; do
     sleep 20
   done
 fi
-ok "Melbourne enabled"
+aws ec2 describe-availability-zones --region "$STANDBY_REGION" >/dev/null 2>&1 \
+  || die "Melbourne is enabled but EC2 calls there are denied - the AWS plan SCP is still attached. Run M0b."
+aws ec2 describe-availability-zones --region "$PRIMARY_REGION" >/dev/null 2>&1 \
+  || die "Sydney EC2 calls denied - check the org SCPs (M0b)."
+ok "Melbourne enabled and reachable"
 
 # -------------------------------------------------------------------------------------
 # M5  REGISTER THE DOMAIN (manual - it is a purchase, ~USD 3/yr, billed to card not credits)

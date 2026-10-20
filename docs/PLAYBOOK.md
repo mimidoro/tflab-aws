@@ -121,15 +121,34 @@ card, not the credits. Verify real spend in Cost Explorer (filter tag `Project =
 
 ---
 
-## 4. Setup - manual vs scripted (BUILD-RIG)
+## 4. Setup - manual vs scripted (A-BUILD-RIG)
 
 Run `./bootstrap/bootstrap.sh` from the repo root; each manual step is mirrored as comments in the script.
 
+### Account model: AWS "project" account
+
+The lab account (073019354521) was created through the **new AWS experience** (AWS Builder ID,
+`AccountFullAccessRole`). Until advanced features are activated, AWS-managed service control
+policies (SCPs) allow **one workload region only**, **deny Spot**, **deny creating IAM Identity
+Center** and block region opt-in. Decision (2026-10-21): **activate advanced features** to keep the
+two-region design. This is **irreversible** and removes AWS's hard spend limit; the B2 budget kill
+switch and nightly destroy replace it.
+
+```mermaid
+flowchart LR
+  bid([AWS Builder ID]) --> mgmt["Management account<br/>(created at activation)<br/>owns SCPs + billing"]
+  mgmt --> idc["Identity Delegated Admin account<br/>IAM Identity Center (us-east-1)"]
+  mgmt --> proj["Project account 073019354521<br/>tflab-aws lab"]
+  scp{{"SCP tflab-guardrails<br/>Sydney + Melbourne + us-east-1<br/>Spot allowed, EC2/RDS size caps"}} -.-> proj
+```
+
 | # | Step | Manual (console) | Scripted |
 |---|---|---|---|
+| M0 | **A**ctivate | settings.aws.com > Projects > Actions > Explore advanced features; team name; new management email (e.g. `cwdyang888+aws-mgmt@gmail.com`); add MFA to the new management root user | - (irreversible decision) |
+| M0b | **A**ctivate: guardrails | Management account > Organizations > Policies > SCPs: create `tflab-guardrails`, attach to Root, detach AWS's plan SCP (the one with `RegionFloor`) | `./bootstrap/org-guardrails.sh --apply` (run in the management account) |
 | M1 | **B**udget | Billing > Budgets: USD 100, credits excluded, 25/50/75/100% alerts | B2 creates `tflab-aws-guard`; delete the manual one afterwards |
 | M2 | **U**pgrade | Billing > Free Tier > Upgrade plan | - (account decision) |
-| M3 | **I**dentity | IAM Identity Center admin user; MFA on root | script refuses to run as root |
+| M3 | **I**dentity | Sign in to the console normally (never root) | `aws login --remote --profile tflab-admin` (AWS CLI >= 2.32); runner-up: Identity Center from M0 (us-east-1) + `aws configure sso` |
 | M4 | **L**ocation | Account > AWS Regions > enable Melbourne | `aws account enable-region` + wait |
 | M5 | **D**omain | Route 53 > Register `mimidog.click`; click ICANN email | `register-domain` command in comments |
 | B1 | **R**emote state | S3 bucket, versioned, encrypted, TLS-only | yes |
