@@ -108,6 +108,7 @@ module "mel_platform" {
   name                   = "tflab-mel"
   is_primary             = false
   region_label           = "Melbourne (ap-southeast-4)"
+  enable_fis             = false # no FIS endpoint in ap-southeast-4
   core                   = module.mel_core
   kubernetes_version     = var.kubernetes_version
   pod_cidr               = "10.201.0.0/16"

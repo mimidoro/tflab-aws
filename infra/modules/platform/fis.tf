@@ -1,9 +1,12 @@
-# AWS Fault Injection Service (FIS) experiment templates. Run with drills/fis-run.sh or the
+# AWS Fault Injection Service (FIS) experiment templates. Run with drills/drill.sh or the
 # "drill" GitHub workflow. Costs USD 0.10 per action-minute; every action is time-boxed.
 # Stop condition "none" is deliberate for a lab; in production use an alarm as the stop condition.
+# FIS is not offered in every region (no endpoint in Melbourne, ap-southeast-4, as of 2026-10):
+# enable_fis = false skips all of it there; Chaos Mesh / Cilium / RDS-API drills still work.
 
 resource "aws_iam_role" "fis" {
-  name = "${var.name}-fis"
+  count = var.enable_fis ? 1 : 0
+  name  = "${var.name}-fis"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -15,20 +18,21 @@ resource "aws_iam_role" "fis" {
 }
 
 resource "aws_iam_role_policy_attachment" "fis" {
-  for_each = toset([
+  for_each = var.enable_fis ? toset([
     "arn:aws:iam::aws:policy/service-role/AWSFaultInjectionSimulatorEKSAccess",
     "arn:aws:iam::aws:policy/service-role/AWSFaultInjectionSimulatorEC2Access",
     "arn:aws:iam::aws:policy/service-role/AWSFaultInjectionSimulatorRDSAccess",
     "arn:aws:iam::aws:policy/service-role/AWSFaultInjectionSimulatorNetworkAccess",
-  ])
-  role       = aws_iam_role.fis.name
+  ]) : toset([])
+  role       = aws_iam_role.fis[0].name
   policy_arn = each.value
 }
 
 # 1. Kill half the worker nodes -> pods reschedule, ALB marks targets unhealthy, ASG replaces.
 resource "aws_fis_experiment_template" "node_terminate" {
+  count       = var.enable_fis ? 1 : 0
   description = "${var.name}: terminate 50% of nodes in the node group"
-  role_arn    = aws_iam_role.fis.arn
+  role_arn    = aws_iam_role.fis[0].arn
 
   stop_condition {
     source = "none"
@@ -59,8 +63,9 @@ resource "aws_fis_experiment_template" "node_terminate" {
 
 # 2. Reboot the database -> API /ready fails briefly, 5xx alarm, recovery.
 resource "aws_fis_experiment_template" "db_reboot" {
+  count       = var.enable_fis ? 1 : 0
   description = "${var.name}: reboot the RDS instance"
-  role_arn    = aws_iam_role.fis.arn
+  role_arn    = aws_iam_role.fis[0].arn
 
   stop_condition {
     source = "none"
@@ -87,8 +92,9 @@ resource "aws_fis_experiment_template" "db_reboot" {
 
 # 3. Single-AZ network blackout (first private subnet) for 5 minutes.
 resource "aws_fis_experiment_template" "az_blackout" {
+  count       = var.enable_fis ? 1 : 0
   description = "${var.name}: cut all network traffic in one AZ's private subnet for 5 min"
-  role_arn    = aws_iam_role.fis.arn
+  role_arn    = aws_iam_role.fis[0].arn
 
   stop_condition {
     source = "none"
@@ -123,8 +129,9 @@ resource "aws_fis_experiment_template" "az_blackout" {
 
 # 4. Whole-region blackout (all private subnets) for 10 minutes -> Route 53 fails over.
 resource "aws_fis_experiment_template" "region_blackout" {
+  count       = var.enable_fis ? 1 : 0
   description = "${var.name}: cut all private-subnet traffic for 10 min (regional outage)"
-  role_arn    = aws_iam_role.fis.arn
+  role_arn    = aws_iam_role.fis[0].arn
 
   stop_condition {
     source = "none"

@@ -35,3 +35,5 @@
 | 2026-10-21 | First `up`: guardrails | replica create allowed (db.t4g.micro) | SCP denied CreateDBInstanceReadReplica on the source DB (condition key absent) | `Null` guard on the EC2/RDS size-cap statements |
 | 2026-10-21 | First `up`: NAT ASG | instance launches | `Authentication Failure` on first launch | troubleshooting row + CloudTrail check; re-run |
 | 2026-10-21 | First `up`: RDS replica | replica of a primary with RDS-managed password | AWS rejects postgres replicas when ManageMasterUserPassword is on | write-only password into own Secrets Manager secret (never in state) |
+| 2026-10-21 | First `up`: FIS | FIS templates in both regions | no FIS endpoint in ap-southeast-4 | `enable_fis` per region (off in Melbourne) |
+| 2026-10-21 | First `up`: NAT | fck-nat ASG self-heals | ASG launch failed, then orphan blocked re-runs | NAT is a single instance (`ha_mode = false`); leftovers sweep checks ASGs |

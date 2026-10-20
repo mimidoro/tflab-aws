@@ -31,9 +31,10 @@ module "vpc" {
   private_subnet_tags = { "kubernetes.io/role/internal-elb" = 1 }
 }
 
-# fck-nat: community NAT instance AMI on t4g.nano, self-healing via an ASG of 1.
-# Trade-off accepted for a lab: single NAT for both AZs (an AZ outage of the NAT AZ
-# breaks egress for the other AZ until the ASG replaces it).
+# fck-nat: community NAT instance AMI on t4g.nano, as ONE plain EC2 instance (ha_mode = false).
+# Trade-off accepted for a lab: single NAT for both AZs and no self-healing - if it dies, egress
+# stops until the next apply. ASG mode was dropped: its first launch in this new account failed
+# ("Authentication Failure") and a half-created ASG blocks later applies (AlreadyExists).
 module "nat" {
   source  = "RaJiska/fck-nat/aws"
   version = "~> 1.6"
@@ -42,7 +43,7 @@ module "nat" {
   vpc_id        = module.vpc.vpc_id
   subnet_id     = module.vpc.public_subnets[0]
   instance_type = "t4g.nano"
-  ha_mode       = true
+  ha_mode       = false
 
   update_route_tables = true
   route_tables_ids    = { for i, id in module.vpc.private_route_table_ids : "private-${i}" => id }

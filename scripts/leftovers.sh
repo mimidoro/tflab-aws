@@ -45,6 +45,9 @@ for region in ap-southeast-2 ap-southeast-4 us-east-1; do
   check "unassociated Elastic IP" "$(aws ec2 describe-addresses --region "$region" \
     --query 'Addresses[?AssociationId==null].PublicIp' --output text)"
 
+  check "Auto Scaling group" "$(aws autoscaling describe-auto-scaling-groups --region "$region" \
+    --query 'AutoScalingGroups[?starts_with(AutoScalingGroupName, `tflab-`)].AutoScalingGroupName' --output text)"
+
   check "NAT gateway" "$(aws ec2 describe-nat-gateways --region "$region" \
     --filter Name=state,Values=available,pending --query 'NatGateways[].NatGatewayId' --output text)"
 done

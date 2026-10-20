@@ -62,3 +62,9 @@ variable "chaos_mesh_version" {
 variable "metrics_server_version" {
   type = string
 }
+
+variable "enable_fis" {
+  description = "Create AWS FIS experiment templates. false where FIS has no endpoint (Melbourne)."
+  type        = bool
+  default     = true
+}
