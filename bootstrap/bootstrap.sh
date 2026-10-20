@@ -6,8 +6,8 @@
 # equivalent (Bx) where one exists. Steps already done are detected and skipped, so the
 # script is safe to re-run.
 #
-# Memory hook - "BUILD-RIG":  Budget, Upgrade, Identity, Location (Melbourne), Domain,
-#                             Remote state, IAM/ECR/guard (terraform), GitHub
+# Memory hook - "A-BUILD-RIG": Activate (M0/M0b), Budget, Upgrade, Identity, Location (Melbourne),
+#                             Domain, Remote state, IAM/ECR/guard (terraform), GitHub
 #
 # Usage:  ./bootstrap/bootstrap.sh            (run from the repo root, signed in as an admin)
 # =====================================================================================
@@ -25,8 +25,13 @@ warn() { printf '   \033[33m!!\033[0m %s\n' "$*"; }
 die()  { printf '   \033[31mXX\033[0m %s\n' "$*"; exit 1; }
 
 for bin in aws terraform gh jq; do
-  command -v "$bin" >/dev/null || die "missing tool: $bin (see PLAYBOOK > Tooling)"
+  command -v "$bin" >/dev/null || die "missing tool: $bin (see PLAYBOOK > Tooling - or open the repo in the dev container / Codespace)"
 done
+awsv=$(aws --version 2>&1 | sed -E 's|^aws-cli/([0-9]+)\.([0-9]+).*|\1 \2|')
+read -r awsmaj awsmin <<<"$awsv"
+if (( awsmaj < 2 || (awsmaj == 2 && awsmin < 32) )); then
+  warn "AWS CLI $(aws --version 2>&1 | cut -d' ' -f1) is older than 2.32 - 'aws login' needs 2.32+"
+fi
 
 # -------------------------------------------------------------------------------------
 # M1  BUDGET (manual, already done)
@@ -38,23 +43,75 @@ done
 #
 # M2  UPGRADE TO PAID PLAN (manual, already done)
 #     Console: Billing and Cost Management > Free Tier > Upgrade plan.
-#     Remaining credits carry over and are applied first. Needed for EKS and Route 53 Domains.
+#     Remaining credits carry over and are applied first. Needed for EKS and Route 53 Domains
+#     (on the Free plan route53domains returns "Free Tier accounts are not supported").
 # -------------------------------------------------------------------------------------
 
 # -------------------------------------------------------------------------------------
-# M3  ADMIN IDENTITY (manual) - never use the root user for day-to-day work
-#     Console: IAM Identity Center (region ap-southeast-2) > Enable
-#       > Users > Add user (your email) > Permission sets > Create "AdministratorAccess"
-#       > AWS accounts > assign the user + permission set
-#     Then locally:  aws configure sso   (profile name e.g. tflab-admin)
-#                    export AWS_PROFILE=tflab-admin && aws sso login
-#     Also: enable MFA on the root user and lock its credentials away.
+# This account is an AWS "project" account (new AWS experience, AWS Builder ID sign-in).
+# Until advanced features are activated, AWS-managed SCPs allow ONE workload region and deny
+# Spot - the two-region lab cannot run. Steps M0/M0b unlock it (once, irreversible).
+#
+# M0  ACTIVATE ADVANCED FEATURES (manual, IRREVERSIBLE)
+#     https://settings.aws.com > Projects > Actions > Explore advanced features
+#       - Team name: becomes the IAM Identity Center instance name (e.g. mimidog)
+#       - Management account email: an address NOT used by any AWS account; Gmail plus-addressing
+#         works, e.g. cwdyang888+aws-mgmt@gmail.com. Verify it.
+#       - Review and complete activation > confirm
+#     Effects: you own the organization and its SCPs; AWS spend limits are REMOVED for good
+#     (B2's budget + USD 90 kill switch and the nightly destroy replace them); opt-in regions
+#     become available. Activation creates two extra accounts: the MANAGEMENT account (owns
+#     SCPs + billing) and "Identity Delegated Admin" (runs IAM Identity Center, us-east-1).
+#     Other projects you own (e.g. "Ready Set Build") become member accounts too.
+#
+#     Reaching the MANAGEMENT account (day to day): https://settings.aws.com with your AWS
+#     Builder ID > its management-account links. No root needed.
+#     Root of the management account = emergencies only. If sign-in says "root user credentials
+#     are not valid", no password was set yet: signin.aws.amazon.com > Root user > the management
+#     email > Forgot password, then add MFA (IAM > Security credentials). Use a private window if
+#     the "Choose AWS sessions" picker gets in the way ("Add session" / "Sign in to another account").
+#     Project accounts (like this lab account) have no usable root at all.
+#
+# M0b ORG GUARDRAILS (run in the MANAGEMENT account - see org-guardrails.sh for the console way)
+#     ./bootstrap/org-guardrails.sh            # report
+#     ./bootstrap/org-guardrails.sh --apply    # Sydney + Melbourne + us-east-1 only, Spot allowed,
+#                                              # EC2/RDS size caps
+#     Policies after activation (Organizations > Policies > Service control policies):
+#       DETACH  AdvancedModeRegionRestrictionSecurityControlPolicy  (RegionFloor - one region only)
+#       KEEP    ManagedAccountSecurityControlPolicy (BlockOrgEscape), FullAWSAccess,
+#               BudgetsSpendLimit* (managed by AWS Budgets)
+#     Spot: no SCP denies it after activation (checked 2026-10-21).
+#     tflab-guardrails on Root applies to EVERY member account (incl. other projects).
+#
+# M3  CLI IDENTITY (manual) - never root, never access keys
+#     Winner:   aws login --remote --profile tflab-admin   (AWS CLI >= 2.32; uses your console
+#               sign-in; open the URL it prints, paste the code back; lasts up to 12 h)
+#               - "No AWS region has been configured" prompt -> ap-southeast-2
+#               - pick the session for THIS lab account, not the management account. To get one:
+#                 settings.aws.com > Projects > the lab project > open console.
+#                 Wrong pick? aws logout --profile tflab-admin, then log in again.
+#               - optional separate profile for org work: aws login --remote --profile tflab-mgmt
+#     Runner-up: IAM Identity Center created by M0 (it lives in us-east-1): assign your user the
+#               AdministratorAccess permission set on this account, then
+#               aws configure sso --use-device-code   (SSO region us-east-1)
+#     Then:     export AWS_PROFILE=tflab-admin
 # -------------------------------------------------------------------------------------
 say "M3  Checking caller identity"
 CALLER_ARN=$(aws sts get-caller-identity --query Arn --output text)
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-[[ "$CALLER_ARN" == *":root" ]] && die "You are signed in as ROOT. Complete M3 and use an Identity Center admin."
+[[ "$CALLER_ARN" == *":root" ]] && die "You are signed in as ROOT. Use 'aws login --remote' with your normal console sign-in (M3)."
+MGMT_ID=$(aws organizations describe-organization --query Organization.MasterAccountId --output text 2>/dev/null || true)
+[[ -n "$MGMT_ID" && "$MGMT_ID" == "$ACCOUNT_ID" ]] && \
+  die "Signed in to the MANAGEMENT account ($ACCOUNT_ID). Run: aws logout --profile \$AWS_PROFILE, then aws login --remote and pick the lab account session (M3)."
 ok "account $ACCOUNT_ID as $CALLER_ARN"
+
+# Long-lived IAM user access keys are not needed (GitHub uses OIDC, people use aws login).
+# Any active key is flagged so it can be deactivated - e.g. an old deploy user like svc-github-deploy.
+for u in $(aws iam list-users --query 'Users[].UserName' --output text 2>/dev/null); do
+  keys=$(aws iam list-access-keys --user-name "$u" \
+    --query "AccessKeyMetadata[?Status=='Active'].AccessKeyId" --output text 2>/dev/null || true)
+  [[ -n "$keys" ]] && warn "IAM user '$u' has ACTIVE access keys ($keys) - deactivate/delete unless something still needs them"
+done
 
 # -------------------------------------------------------------------------------------
 # M4  ENABLE MELBOURNE (opt-in region)
@@ -62,18 +119,32 @@ ok "account $ACCOUNT_ID as $CALLER_ARN"
 #     Scripted equivalent:
 # -------------------------------------------------------------------------------------
 say "M4  Melbourne ($STANDBY_REGION) opt-in"
-status=$(aws account get-region-opt-status --region-name "$STANDBY_REGION" --query RegionOptStatus --output text)
+status=$(aws account get-region-opt-status --region-name "$STANDBY_REGION" --query RegionOptStatus --output text 2>/dev/null) \
+  || die "Region APIs denied - advanced features not activated yet. Do M0 + M0b (see comments above)."
 if [[ "$status" != "ENABLED" && "$status" != "ENABLED_BY_DEFAULT" ]]; then
-  [[ "$status" == "DISABLED" ]] && aws account enable-region --region-name "$STANDBY_REGION"
+  if [[ "$status" == "DISABLED" ]]; then
+    aws account enable-region --region-name "$STANDBY_REGION" \
+      || die "enable-region denied - an SCP still blocks it. Do M0 + M0b."
+  fi
   echo "   enabling (usually a few minutes, can take longer)..."
   until [[ "$(aws account get-region-opt-status --region-name "$STANDBY_REGION" --query RegionOptStatus --output text)" == "ENABLED" ]]; do
     sleep 20
   done
 fi
-ok "Melbourne enabled"
+aws ec2 describe-availability-zones --region "$STANDBY_REGION" >/dev/null 2>&1 \
+  || die "Melbourne is enabled but EC2 calls there are denied - the AWS plan SCP is still attached. Run M0b."
+aws ec2 describe-availability-zones --region "$PRIMARY_REGION" >/dev/null 2>&1 \
+  || die "Sydney EC2 calls denied - check the org SCPs (M0b)."
+ok "Melbourne enabled and reachable"
 
 # -------------------------------------------------------------------------------------
 # M5  REGISTER THE DOMAIN (manual - it is a purchase, ~USD 3/yr, billed to card not credits)
+#     Availability + price (Route 53 Domains API lives in us-east-1 only):
+#       aws route53domains check-domain-availability --region us-east-1 --domain-name mimidog.click
+#       aws route53domains list-prices --region us-east-1 --tld click
+#     Registration status:
+#       aws route53domains list-operations --region us-east-1 \
+#         --query 'Operations[?Type==`REGISTER_DOMAIN`].[DomainName,Status]' --output table
 #     Console: Route 53 > Registered domains > Register domains > "mimidog.click"
 #       - Duration 1 year, auto-renew OFF (lab), privacy protection ON
 #       - Route 53 creates the public hosted zone automatically

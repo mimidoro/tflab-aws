@@ -26,3 +26,7 @@
 
 | Date | Drill / area | Expected | Observed | Action |
 |---|---|---|---|---|
+| 2026-10-20 | Setup: domain | `route53domains` works after creating the account | Free plan blocks it ("Free Tier accounts are not supported") | M2 upgrade documented in bootstrap |
+| 2026-10-21 | Setup: account model | standalone account, Identity Center available | AWS "project" account: one region, Identity Center denied | activated advanced features; `tflab-guardrails` SCP replaces `AdvancedModeRegionRestrictionSecurityControlPolicy`; CLI via `aws login --remote` |
+| 2026-10-21 | Setup: Spot | Spot might stay denied after activation | no SCP denies Spot after activation | design kept (Graviton Spot) |
+| 2026-10-21 | Setup: CLI | `aws login` picks the right account | picked the management account first | bootstrap now refuses the management account |

@@ -19,7 +19,8 @@ printf '  %-10s %s\n' kubectl "$(kubectl version --client 2>/dev/null | head -1)
 cat <<'EOF'
 
 Next:
-  aws configure sso --use-device-code   # profile: tflab-admin (IAM Identity Center admin, never root)
+  aws login --remote --profile tflab-admin   # console sign-in, never root or access keys
+                                             # region prompt: ap-southeast-2; pick the LAB account session (073019354521)
   export AWS_PROFILE=tflab-admin
   ./bootstrap/bootstrap.sh
 

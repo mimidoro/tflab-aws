@@ -12,3 +12,17 @@
 | `terraform destroy` hangs on helm_release | cluster already gone | `scripts/down.sh` handles it; manually: `terraform state rm <helm_release addr>` |
 | Deploy role suddenly `AccessDenied` on create | **kill switch tripped** (USD 90) | see PLAYBOOK > "Kill switch tripped" |
 | Plan wants to recreate Melbourne DB after a promote drill | replica was promoted | expected: run `down` then `up` to rebuild |
+
+## Account and sign-in (learned during first setup, 2026-10-20/21)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `missing tool: aws` from bootstrap | not in the dev container | open a Codespace from `main`; existing codespace: **Codespaces: Full Rebuild Container** |
+| `route53domains ... Free Tier accounts are not supported` | Free plan | upgrade to the Paid plan (M2); credits carry over |
+| `sso:CreateInstance ... explicit deny in a service control policy` | AWS "project" account (new AWS experience) | don't create Identity Center; use `aws login --remote`; activate advanced features (M0) for the two-region lab |
+| Melbourne / second region denied, `RegionFloor` in the policy | AWS region-restriction SCP | M0b: attach `tflab-guardrails` to Root, detach `AdvancedModeRegionRestrictionSecurityControlPolicy` |
+| "Root user credentials are not valid or sign-in as root is currently disabled" | management root password never set, wrong email, or a project account (no root) | reach the management account via settings.aws.com; for emergency root: *Forgot password* on the management email |
+| "Choose AWS sessions" page | multi-session console | **Add session** / **Sign in to another account**, or a private window |
+| `aws login` asks "No AWS region has been configured" | new profile | answer `ap-southeast-2` (or `aws configure set region ap-southeast-2 --profile tflab-admin`) |
+| `get-caller-identity` shows 996241422033 | logged in to the management account | `aws logout --profile tflab-admin`; open the lab project console via settings.aws.com; `aws login --remote` and pick that session |
+| `gh` 403 creating the `lab` environment in a codespace | codespace token isn't repo admin | `unset GITHUB_TOKEN && gh auth login` |
