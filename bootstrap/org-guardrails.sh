@@ -17,9 +17,10 @@
 #   AWS Organizations > Policies > Service control policies
 #     1. Create policy "tflab-guardrails" - paste bootstrap/org/scp-tflab-guardrails.json
 #     2. Targets: attach it to the Root
-#     3. Open the AWS policy whose JSON contains "RegionFloor" and "AllowPaidTierServices"
-#        > Targets > Detach from every target
-#     4. Leave FullAWSAccess and the BlockOrgEscape/ProtectManagedRoles policy attached
+#     3. Open AdvancedModeRegionRestrictionSecurityControlPolicy (the AWS policy whose JSON
+#        contains "RegionFloor") > Targets > Detach from every target
+#     4. Leave attached: FullAWSAccess, ManagedAccountSecurityControlPolicy (BlockOrgEscape /
+#        ProtectManagedRoles) and the BudgetsSpendLimit* policies (AWS Budgets manages those)
 #
 # Usage: ./bootstrap/org-guardrails.sh          (report only)
 #        ./bootstrap/org-guardrails.sh --apply  (make the changes)
@@ -54,8 +55,8 @@ while read -r pid pname; do
   content=$(aws organizations describe-policy --policy-id "$pid" --query Policy.Content --output text)
   targets=$(aws organizations list-targets-for-policy --policy-id "$pid" --query 'Targets[].Name' --output text | tr '\t' ',')
   flag=""
-  if grep -q '"RegionFloor"' <<<"$content" && grep -q 'Allow\(Paid\|Free\)TierServices' <<<"$content"; then
-    flag="  <- AWS plan SCP (region floor + Spot deny) - to be detached"
+  if grep -q '"RegionFloor"' <<<"$content" && ! grep -q '"BlockOrgEscape"' <<<"$content"; then
+    flag="  <- AWS region-restriction SCP (e.g. AdvancedModeRegionRestrictionSecurityControlPolicy) - to be detached"
     plan_policies+=("$pid")
   fi
   printf '   %-24s %-40s targets: %s%s\n' "$pid" "$pname" "${targets:-none}" "$flag"
