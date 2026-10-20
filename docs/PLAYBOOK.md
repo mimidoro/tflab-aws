@@ -134,6 +134,16 @@ Center** and block region opt-in. Decision (2026-10-21): **activate advanced fea
 two-region design. This is **irreversible** and removes AWS's hard spend limit; the B2 budget kill
 switch and nightly destroy replace it.
 
+| Account | ID | Role | How to reach it |
+|---|---|---|---|
+| Management | 996241422033 | Organization, SCPs, billing | settings.aws.com (Builder ID) > management links; root = emergencies only (set password via *Forgot password*, add MFA) |
+| Identity Delegated Admin | (created at activation) | IAM Identity Center `mimido-team`, us-east-1 | settings.aws.com |
+| Lab project | 073019354521 | tflab-aws workloads | settings.aws.com > Projects > open console; CLI `aws login --remote` |
+| Other project ("Ready Set Build") | - | not part of the lab - but `tflab-guardrails` on Root applies to it too | settings.aws.com |
+
+Checked 2026-10-21: after activation **no SCP denies Spot**; only the region-restriction policy had
+to be swapped. `sso:CreateInstance` stays denied (Identity Center already exists).
+
 ```mermaid
 flowchart LR
   bid([AWS Builder ID]) --> mgmt["Management account<br/>(created at activation)<br/>owns SCPs + billing"]
@@ -145,10 +155,10 @@ flowchart LR
 | # | Step | Manual (console) | Scripted |
 |---|---|---|---|
 | M0 | **A**ctivate | settings.aws.com > Projects > Actions > Explore advanced features; team name; new management email (e.g. `cwdyang888+aws-mgmt@gmail.com`); add MFA to the new management root user | - (irreversible decision) |
-| M0b | **A**ctivate: guardrails | Management account > Organizations > Policies > SCPs: create `tflab-guardrails`, attach to Root, detach AWS's plan SCP (the one with `RegionFloor`) | `./bootstrap/org-guardrails.sh --apply` (run in the management account) |
+| M0b | **A**ctivate: guardrails | Management account (reach it via settings.aws.com, not root) > Organizations > Policies > SCPs: create `tflab-guardrails`, attach to **Root**, then detach `AdvancedModeRegionRestrictionSecurityControlPolicy`. Keep `ManagedAccountSecurityControlPolicy`, `FullAWSAccess`, `BudgetsSpendLimit*` | `./bootstrap/org-guardrails.sh --apply` (run in the management account) |
 | M1 | **B**udget | Billing > Budgets: USD 100, credits excluded, 25/50/75/100% alerts | B2 creates `tflab-aws-guard`; delete the manual one afterwards |
 | M2 | **U**pgrade | Billing > Free Tier > Upgrade plan | - (account decision) |
-| M3 | **I**dentity | Sign in to the console normally (never root) | `aws login --remote --profile tflab-admin` (AWS CLI >= 2.32); runner-up: Identity Center from M0 (us-east-1) + `aws configure sso` |
+| M3 | **I**dentity | Open the lab account console via settings.aws.com > Projects (never root) | `aws login --remote --profile tflab-admin` (AWS CLI >= 2.32); region prompt = `ap-southeast-2`; pick the **lab account** session (`073019354521`), not the management account; bootstrap refuses the management account. Runner-up: Identity Center from M0 (us-east-1) + `aws configure sso` |
 | M4 | **L**ocation | Account > AWS Regions > enable Melbourne | `aws account enable-region` + wait |
 | M5 | **D**omain | Route 53 > Register `mimidog.click`; click ICANN email | `register-domain` command in comments |
 | B1 | **R**emote state | S3 bucket, versioned, encrypted, TLS-only | yes |
@@ -157,7 +167,12 @@ flowchart LR
 | B3 | **G**itHub | Settings > Environments > `lab` (main only); variable `AWS_ACCOUNT_ID` | `gh api` / `gh variable set` |
 | M7 | (optional) | Required reviewer on `lab` | - |
 
-Tooling: `aws` v2, `terraform` >= 1.10, `kubectl`, `helm`, `gh`, `jq`, Node 22, .NET 10 - **all pre-installed in the dev container** (`.devcontainer/`: open in GitHub Codespaces or VS Code "Reopen in Container"). In a codespace, run `unset GITHUB_TOKEN && gh auth login` before bootstrap (step B3 needs repo admin rights).
+Tooling: `aws` v2 (>= 2.32 for `aws login`), `terraform` >= 1.10, `kubectl`, `helm`, `gh`, `jq`, Node 22, .NET 10 - **all pre-installed in the dev container** (`.devcontainer/`: open in GitHub Codespaces or VS Code "Reopen in Container").
+
+- The dev container only exists on branches that contain `.devcontainer/` - create the codespace from `main` after merging.
+- After pulling dev container changes into an existing codespace: Command Palette (Ctrl/Cmd+Shift+P) > **Codespaces: Full Rebuild Container**, or delete it at github.com/codespaces and create a new one.
+- In a codespace, run `unset GITHUB_TOKEN && gh auth login` before bootstrap (step B3 needs repo admin rights; the built-in codespace token doesn't have them).
+- Old IAM users with access keys (e.g. `svc-github-deploy`) are not used - GitHub deploys via OIDC. Bootstrap warns about any active keys; deactivate and delete them.
 
 ---
 

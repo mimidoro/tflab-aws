@@ -20,6 +20,7 @@ cat <<'EOF'
 
 Next:
   aws login --remote --profile tflab-admin   # console sign-in, never root or access keys
+                                             # region prompt: ap-southeast-2; pick the LAB account session (073019354521)
   export AWS_PROFILE=tflab-admin
   ./bootstrap/bootstrap.sh
 
