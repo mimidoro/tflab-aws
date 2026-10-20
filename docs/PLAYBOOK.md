@@ -138,7 +138,7 @@ Run `./bootstrap/bootstrap.sh` from the repo root; each manual step is mirrored 
 | B3 | **G**itHub | Settings > Environments > `lab` (main only); variable `AWS_ACCOUNT_ID` | `gh api` / `gh variable set` |
 | M7 | (optional) | Required reviewer on `lab` | - |
 
-Tooling: `aws` v2, `terraform` >= 1.10, `kubectl`, `gh`, `jq`, Node 22.
+Tooling: `aws` v2, `terraform` >= 1.10, `kubectl`, `helm`, `gh`, `jq`, Node 22, .NET 10 - **all pre-installed in the dev container** (`.devcontainer/`: open in GitHub Codespaces or VS Code "Reopen in Container"). In a codespace, run `unset GITHUB_TOKEN && gh auth login` before bootstrap (step B3 needs repo admin rights).
 
 ---
 
