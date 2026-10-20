@@ -273,6 +273,8 @@ backlog item 4 in `.claude/skills/tflab-aws/improve.md`.
 | **R**egion | region-blackout | AWS FIS | as above + unhealthy targets | 10 min |
 | **D**B | promote-replica | RDS API | RTO/RPO report | rebuild (down + up) |
 
+**AWS FIS drills run in Sydney only** - FIS has no endpoint in Melbourne (ap-southeast-4); Melbourne uses the Chaos Mesh, Cilium and RDS-API drills.
+
 **RTO evidence:** `drills/rto-watch.sh` (time until traffic moves, time until writes work).
 **RPO evidence:** `promote-replica` writes a marker in Sydney, fences Sydney, promotes Melbourne
 and checks the marker survived; replica lag is printed before fencing.

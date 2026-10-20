@@ -18,6 +18,7 @@ to OK) before the next. Workflow equivalent: `gh workflow run drill.yml -f drill
 | **D**B | promote-replica * | `drills/drill.sh promote-replica mel --yes` | Melbourne writable; RPO marker check | **rebuild** (down + up) |
 
 `*` destructive or user-visible: confirm with the user first.
+AWS FIS drills (node-kill, db-reboot, az-blackout, region-blackout) are **Sydney only** - no FIS endpoint in Melbourne.
 
 ## Evidence to report
 

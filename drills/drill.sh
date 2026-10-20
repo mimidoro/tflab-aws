@@ -28,13 +28,14 @@ web-down         Pod       Chaos Mesh  web-unhealthy-targets + alb-no-healthy-ta
 cpu-stress       Pod       Chaos Mesh  HPA scales api to max (watch: kubectl get hpa -w)
 latency          App       Chaos Mesh  api-latency-p95 alarm (5 min)
 db-block         App->DB   Cilium      cilium-packet-drops + alb-target-5xx; in syd: Route 53 failover
-node-kill        Node      AWS FIS     api/web-unhealthy-targets, cilium-unreachable-nodes; ASG heals
-db-reboot        Database  AWS FIS     alb-target-5xx briefly; recovers in ~2-5 min
-az-blackout      AZ        AWS FIS     unhealthy targets in one AZ; traffic shifts to the other AZ (5 min)
+node-kill        Node      AWS FIS*    api/web-unhealthy-targets, cilium-unreachable-nodes; ASG heals
+db-reboot        Database  AWS FIS*    alb-target-5xx briefly; recovers in ~2-5 min
+az-blackout      AZ        AWS FIS*    unhealthy targets in one AZ; traffic shifts to the other AZ (5 min)
 failover         Region    Cilium      syd only: db-block + RTO timer -> app.mimidog.click serves Melbourne
 region-blackout  Region    AWS FIS     syd only: private subnets cut 10 min -> Route 53 failover
 promote-replica  Database  RDS API     mel only, DESTRUCTIVE: fence syd, promote replica, report RPO/RTO
 restore          -         -           remove drill policies/experiments in a region
+* AWS FIS drills: syd only (no FIS endpoint in Melbourne)
 EOF
 }
 
@@ -45,7 +46,7 @@ fis_start() {
   tf_init
   local tpl
   tpl=$(terraform -chdir="$REPO_ROOT/infra" output -json fis_templates | jq -r ".${region_name}.${tpl_key}")
-  [[ -n "$tpl" && "$tpl" != "null" ]] || die "FIS template $tpl_key not found in outputs"
+  [[ -n "$tpl" && "$tpl" != "null" ]] || die "no FIS template '$tpl_key' in $KEY - FIS has no endpoint in Melbourne; FIS drills (node-kill, db-reboot, az-blackout, region-blackout) run in syd only"
   local id
   id=$(aws fis start-experiment --region "$region" --experiment-template-id "$tpl" \
         --tags Drill="$tpl_key" --query experiment.id --output text)
