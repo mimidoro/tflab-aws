@@ -1,0 +1,36 @@
+name: pages
+
+# Publishes the interactive architecture pages in docs/ to GitHub Pages:
+#   https://mimidoro.github.io/tflab-aws/
+# One-time setup: Settings > Pages > Build and deployment > Source = GitHub Actions.
+# The repo is public, so this exposes nothing new; never put account IDs or resource IDs in docs/*.html.
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**.html", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Stage the HTML pages only
+        run: mkdir -p _site && cp docs/*.html _site/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
