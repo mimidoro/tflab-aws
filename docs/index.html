@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tflab-aws architecture</title>
+<style>
+:root{--bg:#fafaf7;--fg:#1d1d1b;--mute:#5f5e5a;--line:#d9d7cf;--link:#185fa5}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1b19;--fg:#ecebe6;--mute:#a8a69e;--line:#3a3935;--link:#7fb3e6}}
+body{background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,sans-serif;margin:0;padding:40px 16px}
+main{max-width:640px;margin:0 auto}h1{font-size:1.5rem;margin:0 0 4px}p{color:var(--mute);margin:0 0 24px}
+a.card{display:block;border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:0 0 12px;color:var(--fg);text-decoration:none}
+a.card:hover{border-color:var(--link)}a.card b{color:var(--link)}
+</style>
+</head>
+<body><main>
+<h1>tflab-aws architecture</h1>
+<p>Two-region EKS lab: Sydney primary, Melbourne standby. Repository: <a href="https://github.com/mimidoro/tflab-aws" style="color:var(--link)">mimidoro/tflab-aws</a></p>
+<a class="card" href="ARCH-tflabAWS-TwoRegionEKS-20261021.html"><b>Two-region EKS architecture</b><br>Six views, zoom and pan, the decision behind each component.</a>
+<a class="card" href="ARCH-tflabAWS-NetSec-20261021.html"><b>Network and security</b><br>From the VPC subnets down to the Cilium VXLAN tunnel.</a>
+</main></body>
+</html>

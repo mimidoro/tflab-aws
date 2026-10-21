@@ -34,7 +34,7 @@ managed NAT Gateways (~USD 0.06/hr each - replaced by a NAT instance).
 
 ## 2. Architecture
 
-**Interactive version:** `docs/ARCH-tflabAWS-TwoRegionEKS-20261021.html` - open it in a browser for six views (request path, failover, data and DR, security, observe and break, cost), zoom/pan, and the reasoning plus first-build lessons for every component.
+**Interactive version:** `docs/ARCH-tflabAWS-TwoRegionEKS-20261021.html` ([live page](https://mimidoro.github.io/tflab-aws/ARCH-tflabAWS-TwoRegionEKS-20261021.html)) - open it in a browser for six views (request path, failover, data and DR, security, observe and break, cost), zoom/pan, and the reasoning plus first-build lessons for every component.
 
 ```mermaid
 flowchart TB
@@ -336,7 +336,7 @@ creates are denied, destroys still work.
 
 ## 10. Security and data posture
 
-**Network & security deep-dive:** `docs/ARCH-tflabAWS-NetSec-20261021.html` - address plan, security-group matrix, Cilium policies, VXLAN overlay, a step-through packet walk (browser -> ALB -> NodePort -> VXLAN -> pod -> Pod Identity -> RDS), encryption by hop, decisions (winner / runner-up / avoid) and the risk register.
+**Network & security deep-dive:** `docs/ARCH-tflabAWS-NetSec-20261021.html` ([live page](https://mimidoro.github.io/tflab-aws/ARCH-tflabAWS-NetSec-20261021.html)) - address plan, security-group matrix, Cilium policies, VXLAN overlay, a step-through packet walk (browser -> ALB -> NodePort -> VXLAN -> pod -> Pod Identity -> RDS), encryption by hop, decisions (winner / runner-up / avoid) and the risk register.
 
 | Concern | Position |
 |---|---|
