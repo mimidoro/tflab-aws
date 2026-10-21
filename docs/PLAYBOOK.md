@@ -125,6 +125,8 @@ card, not the credits. Verify real spend in Cost Explorer (filter tag `Project =
 
 ## 4. Setup - manual vs scripted (A-BUILD-RIG)
 
+**Repeatable sequence:** follow `.claude/skills/tflab-aws/setup.md` (the golden path: TOOLS-ACCOUNT-ORG-LOGIN-BOOT-UP-PROVE), validated end to end on 2026-10-21. The tables below are the reference.
+
 Run `./bootstrap/bootstrap.sh` from the repo root; each manual step is mirrored as comments in the script.
 
 ### Account model: AWS "project" account

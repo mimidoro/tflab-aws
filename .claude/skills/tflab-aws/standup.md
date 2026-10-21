@@ -21,9 +21,11 @@ make kubeconfig # contexts tflab-syd, tflab-mel
 
 ## Verify (all must pass)
 
+- `curl -s https://syd.mimidog.click/api/ready` -> `{"db":"ok","writable":true,...}` (if 503 "unreachable", see troubleshooting: Pod Identity / Cilium rows)
 - `curl -s https://app.mimidog.click/api/info | jq` -> region `Sydney (ap-southeast-2)`, `dbWritable: true`
 - `curl -s https://mel.mimidog.click/api/info | jq` -> region Melbourne, `dbWritable: false`
-- `kubectl --context tflab-syd -n app get pods` -> web and api Running (2-3 each)
+- `make kubeconfig` (or `aws eks update-kubeconfig --region ap-southeast-2 --name tflab-syd --alias tflab-syd`, same with `ap-southeast-4` / `tflab-mel`)
+- `kubectl --context tflab-syd -n app get pods` -> web and api Running (2-3 each), **no `db-init` pod left Running** (a stuck one means it can't reach the DB or credentials)
 - `kubectl --context tflab-syd -n kube-system exec ds/cilium -- cilium status --brief` -> OK
 - CloudWatch > Alarms in both regions: all `OK` or `INSUFFICIENT_DATA` (no `ALARM`)
 - First run only: confirm the three new SNS subscription emails (Sydney, Melbourne, us-east-1)
