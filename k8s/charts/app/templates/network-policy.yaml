@@ -36,7 +36,10 @@ spec:
     - toCIDR: [{{ .Values.networkPolicy.vpcCidr | quote }}]
       toPorts:
         - ports: [{ port: "5432", protocol: TCP }]
-    - toCIDR: ["169.254.170.23/32"] # EKS Pod Identity agent
+    # EKS Pod Identity agent (169.254.170.23:80) runs on the node itself, so Cilium classifies
+    # it as the "host" entity - a toCIDR rule never matches it. Without this the API gets no
+    # AWS credentials, can't sign its RDS IAM token and /api/ready reports the DB unreachable.
+    - toEntities: [host]
       toPorts:
         - ports: [{ port: "80", protocol: TCP }]
 {{- if .Values.isPrimary }}
@@ -58,7 +61,7 @@ spec:
     - toCIDR: [{{ .Values.networkPolicy.vpcCidr | quote }}]
       toPorts:
         - ports: [{ port: "5432", protocol: TCP }]
-    - toCIDR: ["169.254.170.23/32"]
+    - toEntities: [host] # EKS Pod Identity agent (see api policy)
       toPorts:
         - ports: [{ port: "80", protocol: TCP }]
     - toEntities: [world] # Secrets Manager API via NAT
