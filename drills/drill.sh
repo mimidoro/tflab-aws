@@ -34,6 +34,7 @@ az-blackout      AZ        AWS FIS*    unhealthy targets in one AZ; traffic shif
 failover         Region    Cilium      syd only: db-block + RTO timer -> app.mimidog.click serves Melbourne
 region-blackout  Region    AWS FIS     syd only: private subnets cut 10 min -> Route 53 failover
 promote-replica  Database  RDS API     mel only, DESTRUCTIVE: fence syd, promote replica, report RPO/RTO
+failover-write   Region    Cilium+RDS  syd only, DESTRUCTIVE: one step - fence syd + promote mel; writable in ~2-5 min
 failback         Database  RDS API     mel only, after promote: Sydney re-seeded from Melbourne, switched back (~60 min)
 restore          -         -           remove drill policies/experiments in a region
 * AWS FIS drills: syd only (no FIS endpoint in Melbourne)
@@ -91,6 +92,10 @@ case "$DRILL" in
     # Traffic failover only (the DB stays in Sydney) - fail back automatically.
     db_unblock
     ok "failed back: Route 53 returns traffic to Sydney once its health check passes (~30-60s)" ;;
+
+  failover-write)
+    [[ "$KEY" == "syd" ]] || die "failover-write fails over FROM the primary (syd)"
+    "$REPO_ROOT/drills/promote-replica.sh" ;;
 
   promote-replica)
     [[ "$KEY" == "mel" ]] || die "promote-replica runs against the standby (mel)"

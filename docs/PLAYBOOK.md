@@ -275,6 +275,7 @@ backlog item 4 in `.claude/skills/tflab-aws/improve.md`.
 | **A**Z | az-blackout | AWS FIS | unhealthy-targets (one AZ) | 5 min |
 | **R**egion | failover | Cilium + Route 53 | us-east-1 `tflab-FAILOVER-sydney-unhealthy` | auto fail-back |
 | **R**egion | region-blackout | AWS FIS | as above + unhealthy targets | 10 min |
+| **R**egion | failover-write (syd) | Cilium + RDS API | one step: fence Sydney + promote Melbourne; writable in ~2-5 min | `failback` |
 | **D**B | promote-replica | RDS API | RTO/RPO report; Sydney stays fenced (split-brain guard) | `failback` |
 | **D**B | failback | RDS API | Sydney re-seeded from Melbourne, switched back, Melbourne re-mirrored, state reconciled | ~60-90 min |
 
