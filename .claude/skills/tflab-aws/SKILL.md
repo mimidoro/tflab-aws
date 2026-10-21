@@ -27,6 +27,7 @@ for architecture, alarms and recovery; the files in this skill folder are the st
 | set up a new AWS account / GitHub repo for the lab | `setup.md`      |
 | start the lab                                      | `standup.md`    |
 | break something / demo alarms / measure RTO, RPO   | `drills.md`     |
+| run a game day / fail the database over and back   | `drills.md` > Game day, Fail-back |
 | check front end + API still work                   | `regression.md` |
 | stop paying / end the session                      | `teardown.md`   |
 | look inside: nodes, Cilium, Hubble flows, encryption | `observe.md`  |

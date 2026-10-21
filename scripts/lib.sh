@@ -52,3 +52,20 @@ confirm() {
   read -r -p "   $1 [y/N] " ans
   [[ "$ans" == "y" || "$ans" == "Y" ]] || die "aborted"
 }
+
+# ---- database topology ---------------------------------------------------------------
+# db_source syd|mel -> prints the replica's source identifier/ARN, or "" if the DB is a writer.
+db_source() {
+  aws rds describe-db-instances --region "${REGION_OF[$1]}" --db-instance-identifier "tflab-$1-pg" \
+    --query 'DBInstances[0].ReadReplicaSourceDBInstanceIdentifier' --output text 2>/dev/null | sed 's/^None$//'
+}
+db_exists() {
+  aws rds describe-db-instances --region "${REGION_OF[$1]}" --db-instance-identifier "tflab-$1-pg" >/dev/null 2>&1
+}
+
+# ---- game-day event log (read by drills/report.sh) ------------------------------------
+# gd_log <event> <region> [key=value ...]   -> .gameday/events.log (git-ignored)
+gd_log() {
+  mkdir -p "$REPO_ROOT/.gameday"
+  printf '%s|%s|%s|%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "${2:--}" "${*:3}" >> "$REPO_ROOT/.gameday/events.log"
+}

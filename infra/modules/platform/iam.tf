@@ -11,7 +11,10 @@ data "aws_iam_policy_document" "pod_trust" {
   }
 }
 
-# --- API: IAM database auth as tflab_api on THIS region's database instance only -----------
+# --- API: IAM database auth as tflab_api on databases in THIS region ----------------------
+# Scoped by region + DB user, not by the instance's resource ID: DR rebuilds the database
+# (promote, fail-back), which changes its resource ID and would lock the API out until the
+# next apply. Only lab databases exist in this account/region, and only they have tflab_api.
 resource "aws_iam_role" "api" {
   name               = "${var.name}-api"
   assume_role_policy = data.aws_iam_policy_document.pod_trust.json
@@ -25,7 +28,7 @@ resource "aws_iam_role_policy" "api_db_connect" {
     Statement = [{
       Effect   = "Allow"
       Action   = "rds-db:connect"
-      Resource = "arn:aws:rds-db:${local.region}:${var.account_id}:dbuser:${var.core.db_resource_id}/tflab_api"
+      Resource = "arn:aws:rds-db:${local.region}:${var.account_id}:dbuser:*/tflab_api"
     }]
   })
 }

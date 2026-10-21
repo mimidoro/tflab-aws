@@ -90,7 +90,11 @@ resource "aws_db_instance" "this" {
   monitoring_interval          = 0
 
   lifecycle {
-    # After a DR drill the replica is promoted; don't let the next plan try to re-attach it.
-    ignore_changes = [replicate_source_db]
+    # DR drills (promote-replica, failback) rebuild these instances outside Terraform:
+    #  - replicate_source_db: a promoted replica must not be re-attached by the next plan
+    #  - db_name: an instance created as a replica reports no DB name; a diff would force REPLACE
+    #  - password_wo_version: re-imported instances have no version in state; the master password
+    #    is inherited through the replication chain, so it still matches the secret
+    ignore_changes = [replicate_source_db, db_name, password_wo_version]
   }
 }

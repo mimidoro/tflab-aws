@@ -18,7 +18,7 @@
 | 4 | Cilium WireGuard transparent encryption (pod-to-pod), then mutual authentication between web/api | encrypted east-west traffic, zero-trust story |
 | 5 | Permissions boundary on all tflab-* roles instead of policy-ARN deny list | stronger IAM guard rail |
 | 6 | Infracost in CI: cost diff on every PR | cost visibility |
-| 7 | Failback runbook that re-seeds Sydney from Melbourne instead of full rebuild | realistic DR |
+| 7 | ~~Failback runbook that re-seeds Sydney from Melbourne~~ **done 2026-10-21**: `drills/failback.sh` | realistic DR |
 | 8 | AWS Config / Security Hub snapshot during `up`, removed on `down` | compliance demo |
 | 9 | Synthetic canary (CloudWatch Synthetics) instead of curl-based RTO watch | managed probing |
 
@@ -38,3 +38,5 @@
 | 2026-10-21 | First `up`: FIS | FIS templates in both regions | no FIS endpoint in ap-southeast-4 | `enable_fis` per region (off in Melbourne) |
 | 2026-10-21 | First `up`: NAT | fck-nat ASG self-heals | ASG launch failed, then orphan blocked re-runs | NAT is a single instance (`ha_mode = false`); leftovers sweep checks ASGs |
 | 2026-10-21 | First `up`: API readiness | API reaches RDS with IAM auth | Cilium dropped Pod Identity agent traffic (host entity, not CIDR) | `toEntities: [host]` for port 80 in the api/db-init policies |
+| 2026-10-21 | Game-day prep: DR | fail-back = down + up | rebuilt DBs change resource ID: IAM rds-db:connect and Terraform state both keyed on it | IAM scoped by region + user; `scripts/reconcile-db.sh` re-imports; lifecycle ignores db_name / password_wo_version |
+| 2026-10-21 | Game-day prep: split brain | `restore syd` after promote is safe | it would unfence a stale Sydney DB and Route 53 would send users to it | `restore syd` refuses while Melbourne is the promoted writer |

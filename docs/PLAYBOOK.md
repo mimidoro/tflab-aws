@@ -267,13 +267,16 @@ backlog item 4 in `.claude/skills/tflab-aws/improve.md`.
 | **A**pp | latency | Chaos Mesh | api-latency-p95 | 5 min |
 | **A**pp->DB | db-block | Cilium deny policy | cilium-packet-drops, alb-target-5xx (+ failover in Sydney) | 5 min auto |
 | **N**ode | node-kill | AWS FIS | unhealthy-targets, cilium-unreachable-nodes | ASG ~5 min |
-| **D**B | db-reboot | AWS FIS | alb-target-5xx | 2-5 min |
+| **D**B | db-reboot | AWS FIS | alb-target-5xx **+ Route 53 failover** (single-AZ DB down longer than the 30 s health threshold) | 2-5 min |
 | **A**Z | az-blackout | AWS FIS | unhealthy-targets (one AZ) | 5 min |
 | **R**egion | failover | Cilium + Route 53 | us-east-1 `tflab-FAILOVER-sydney-unhealthy` | auto fail-back |
 | **R**egion | region-blackout | AWS FIS | as above + unhealthy targets | 10 min |
-| **D**B | promote-replica | RDS API | RTO/RPO report | rebuild (down + up) |
+| **D**B | promote-replica | RDS API | RTO/RPO report; Sydney stays fenced (split-brain guard) | `failback` |
+| **D**B | failback | RDS API | Sydney re-seeded from Melbourne, switched back, Melbourne re-mirrored, state reconciled | ~60-90 min |
 
 **AWS FIS drills run in Sydney only** - FIS has no endpoint in Melbourne (ap-southeast-4); Melbourne uses the Chaos Mesh, Cilium and RDS-API drills.
+
+**Game day:** run the phases BASE-POD-INFRA-DNS-DATA from the codespace, then `make report` writes `docs/gameday/<date>.md` (see `.claude/skills/tflab-aws/drills.md`).
 
 **RTO evidence:** `drills/rto-watch.sh` (time until traffic moves, time until writes work).
 **RPO evidence:** `promote-replica` writes a marker in Sydney, fences Sydney, promotes Melbourne
@@ -334,7 +337,7 @@ creates are denied, destroys still work.
 | **Data classification** | Synthetic test data only (`items` table). Never load client or SkyCity data into this lab. |
 | **Origin -> processing -> storage** | Browser -> ALB (TLS 1.2/1.3) -> pods -> RDS (TLS verify-full, encrypted storage). State in S3 (SSE, versioned, TLS-only). |
 | **Identity** | GitHub OIDC -> role pinned to repo + `lab` environment (main only). Pods use EKS Pod Identity. API uses IAM DB auth - no app password exists. Master password generated ephemerally and written only to the DB and Secrets Manager secret `tflab-syd-pg-master` via write-only arguments (never in Terraform state); read only by the `db-init` Job. (RDS-managed master passwords block cross-region replicas for PostgreSQL.) |
-| **Least privilege** | Deploy role = PowerUser + IAM limited to `tflab-*`, cannot modify itself or the kill switch, cannot attach admin policies. Pod roles scoped to one DB user / one secret / CloudWatch agent. Cilium policies default-deny pod egress. |
+| **Least privilege** | Deploy role = PowerUser + IAM limited to `tflab-*`, cannot modify itself or the kill switch, cannot attach admin policies. Pod roles scoped to one DB user per region (not per instance, so DR rebuilds don't lock the API out) / one secret / CloudWatch agent. Cilium policies default-deny pod egress. |
 | **Secrets** | None in git, none in GitHub (only the account ID variable). |
 | **Exposure** | Public: ALB 80/443 and the EKS API endpoint (IAM-authenticated; narrow `api_allowed_cidrs` to your IP for extra safety). RDS private. |
 | **Retention** | EKS/app logs 1 day, RDS backups 1 day, ECR last 10 images, state versions 30 days. |
@@ -359,7 +362,7 @@ k8s/              Helm charts (app, cwagent) and values (Cilium, Chaos Mesh)
 app/              React web (nginx) and .NET 10 API
 chaos/            Chaos Mesh experiments + Cilium drill policy
 drills/           drill.sh (PANDA-R), rto-watch.sh, promote-replica.sh
-scripts/          up.sh, down.sh (DRAIN), leftovers.sh, kubeconfig.sh, observe.sh (NCH)
+scripts/          up.sh, down.sh (DRAIN), leftovers.sh, kubeconfig.sh, observe.sh (NCH), reconcile-db.sh
 tests/regression/ Playwright API + UI suite
 .claude/skills/   tflab-aws agent skill
 .github/workflows ci, build, up, down (nightly), drill, regression
