@@ -34,6 +34,8 @@ managed NAT Gateways (~USD 0.06/hr each - replaced by a NAT instance).
 
 ## 2. Architecture
 
+**Interactive version:** `docs/ARCH-tflabAWS-TwoRegionEKS-20261021.html` - open it in a browser for six views (request path, failover, data and DR, security, observe and break, cost), zoom/pan, and the reasoning plus first-build lessons for every component.
+
 ```mermaid
 flowchart TB
   user([User / Playwright]) --> r53{{"Route 53<br/>app.mimidog.click<br/>failover record"}}
@@ -122,6 +124,8 @@ card, not the credits. Verify real spend in Cost Explorer (filter tag `Project =
 ---
 
 ## 4. Setup - manual vs scripted (A-BUILD-RIG)
+
+**Repeatable sequence:** follow `.claude/skills/tflab-aws/setup.md` (the golden path: TOOLS-ACCOUNT-ORG-LOGIN-BOOT-UP-PROVE), validated end to end on 2026-10-21. The tables below are the reference.
 
 Run `./bootstrap/bootstrap.sh` from the repo root; each manual step is mirrored as comments in the script.
 

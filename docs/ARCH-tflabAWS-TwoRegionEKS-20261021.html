@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>[hidden]{display:none!important} body{margin:0} img{max-width:100%}</style>
+<title>tflab-aws Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a working blueprint - sticky view switcher, zoomable topology canvas, detail panel beside it
+   (stacked on phones), then the reasoning: decisions, first-run lessons, glossary. */
+:root {
+  --bg: #f3f6f7;
+  --surface: #ffffff;
+  --fg: #14212b;
+  --muted: #5b6b76;
+  --line: #c9d4da;
+  --grid: #e3eaee;
+  --accent: #0e7470;
+  --syd: #2557a7;
+  --mel: #a3620a;
+  --bad: #b8392a;
+  --ok: #2c7a3c;
+  --dim: 0.18;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1519; --surface: #152027; --fg: #e3ebef; --muted: #93a5b0; --line: #2d3c45; --grid: #1a272e;
+    --accent: #3fbab3; --syd: #7ea6ec; --mel: #e3a34c; --bad: #ef7d6c; --ok: #6cc47c; --dim: 0.22;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1519; --surface: #152027; --fg: #e3ebef; --muted: #93a5b0; --line: #2d3c45; --grid: #1a272e;
+  --accent: #3fbab3; --syd: #7ea6ec; --mel: #e3a34c; --bad: #ef7d6c; --ok: #6cc47c; --dim: 0.22;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--f-body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.wrap { max-width: 1320px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 48px; display: grid; gap: 28px; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.1; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 22px; font-weight: 700; }
+h3 { font-size: 16px; font-weight: 600; font-family: var(--f-body); }
+p { margin: 0; }
+.lede { max-width: 68ch; color: var(--muted); font-size: 16px; }
+.eyebrow { font: 600 11px/1 var(--f-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+header { display: grid; gap: 10px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font: 12px var(--f-mono); color: var(--muted); }
+
+/* view switcher */
+.views { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 8px; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; }
+.views button { flex: none; font: 600 13px var(--f-body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; cursor: pointer; }
+.views button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.views button:focus-visible, .tools button:focus-visible, .node:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+@media (max-width: 960px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+.canvas { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; min-width: 0; }
+.canvas svg { display: block; width: 100%; height: min(72vh, 640px); touch-action: none; cursor: grab; user-select: none; }
+.canvas svg.dragging { cursor: grabbing; }
+.tools { position: absolute; right: 10px; top: 10px; display: flex; gap: 4px; }
+.tools button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: 600 16px var(--f-mono); cursor: pointer; }
+.hint { position: absolute; left: 12px; top: 14px; font: 11px var(--f-mono); color: var(--muted); background: var(--surface); padding: 2px 6px; border-radius: 4px; }
+.viewnote { padding: 12px 16px; border-top: 1px solid var(--line); display: grid; gap: 4px; }
+.viewnote strong { font-family: var(--f-display); font-size: 17px; }
+
+/* svg styling */
+.grid-line { stroke: var(--grid); stroke-width: 1; }
+.region { fill: none; stroke-width: 1.5; stroke-dasharray: 6 5; }
+.region-label { font: 600 13px var(--f-mono); letter-spacing: 0.06em; }
+.box { fill: var(--surface); stroke: var(--line); stroke-width: 1.4; }
+.node { cursor: pointer; transition: opacity .25s; }
+.node rect.card { fill: var(--surface); stroke: var(--line); stroke-width: 1.4; }
+.node.syd rect.card { stroke: var(--syd); }
+.node.mel rect.card { stroke: var(--mel); }
+.node.glob rect.card { stroke: var(--accent); }
+.node text.t { font: 600 15px var(--f-body); fill: var(--fg); }
+.node text.s { font: 12px var(--f-mono); fill: var(--muted); }
+.node.sel rect.card { stroke-width: 3; }
+.node.dim, .edge.dim, .zone.dim { opacity: var(--dim); }
+.badge rect { stroke: none; }
+.badge text { font: 600 11px var(--f-mono); }
+.edge path { fill: none; stroke: var(--muted); stroke-width: 1.8; }
+.edge.flow path { stroke: var(--accent); stroke-width: 2.4; }
+.edge.alt path { stroke-dasharray: 7 6; }
+.edge.badpath path { stroke: var(--bad); stroke-dasharray: 3 6; }
+.edge.rep path { stroke: var(--mel); stroke-width: 2.4; stroke-dasharray: 10 5; }
+.edge.sec path { stroke: var(--syd); stroke-width: 2; }
+.edge.obs path { stroke: var(--ok); stroke-width: 2; }
+.edge text { font: 11px var(--f-mono); fill: var(--fg); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; }
+.edge { transition: opacity .25s; }
+@media (prefers-reduced-motion: no-preference) {
+  .edge.flow path, .edge.rep path { animation: march 1.2s linear infinite; }
+  .edge.rep path { animation-duration: 2s; }
+}
+.edge.flow path { stroke-dasharray: 8 6; }
+@keyframes march { to { stroke-dashoffset: -28; } }
+
+/* detail panel */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 12px; min-width: 0; }
+.panel .kind { font: 600 11px var(--f-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.panel dl { margin: 0; display: grid; gap: 10px; }
+.panel dt { font: 600 11px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.panel dd { margin: 2px 0 0; }
+.panel code, td code, li code { font: 12.5px var(--f-mono); background: var(--grid); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.lesson { border-left: 3px solid var(--bad); padding-left: 10px; }
+
+section { display: grid; gap: 14px; }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 11px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: var(--bg); }
+tr:last-child td { border-bottom: 0; }
+td.hook { font: 600 13px var(--f-mono); color: var(--accent); white-space: nowrap; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+.gloss { columns: 2 280px; column-gap: 28px; margin: 0; padding: 0; list-style: none; font-size: 14px; }
+.gloss li { break-inside: avoid; padding: 4px 0; }
+.gloss b { font-family: var(--f-mono); font-size: 13px; }
+footer { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">mimidoro/tflab-aws · architecture</span>
+    <h1>Two regions, one hostname, a fifteen-minute promise</h1>
+    <p class="lede">A cost-capped AWS lab: Sydney serves, Melbourne waits with a live database replica, and Route 53 moves users across when Sydney's health check fails. Pick a view, click any box for the reasoning behind it, and drag, scroll or pinch to zoom.</p>
+    <div class="meta"><span>RTO 15 min · RPO 15 min</span><span>USD 100 credit · ~0.45–0.70/hr while up</span><span>EKS 1.36 · Cilium 1.20.3 · PostgreSQL 17</span><span>Updated 21 Oct 2026, after the first build</span></div>
+  </header>
+
+  <nav class="views" aria-label="Architecture views" id="views"></nav>
+
+  <div class="stage">
+    <div class="canvas">
+      <svg id="svg" viewBox="0 0 1400 900" role="img" aria-label="tflab-aws two-region architecture diagram">
+        <g id="vp"></g>
+      </svg>
+      <div class="tools" aria-label="Zoom controls">
+        <button type="button" id="zin" aria-label="Zoom in">+</button>
+        <button type="button" id="zout" aria-label="Zoom out">−</button>
+        <button type="button" id="zfit" aria-label="Reset view">⤢</button>
+      </div>
+      <span class="hint">drag · scroll · pinch to zoom</span>
+      <div class="viewnote" id="viewnote" aria-live="polite"></div>
+    </div>
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </div>
+
+  <section aria-labelledby="dec">
+    <h2 id="dec">Decisions (PACE-SCOT-STAR)</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Hook</th><th>Decision</th><th>Why</th><th>Rejected</th></tr></thead>
+      <tbody>
+        <tr><td class="hook">P</td><td>Ephemeral pattern: up, demo, destroy; nightly auto-destroy</td><td>Two always-on EKS regions would spend USD 100 in one to two weeks</td><td>Always-on warm standby</td></tr>
+        <tr><td class="hook">A</td><td>Active-passive, Sydney primary</td><td>Meets 15-minute RTO/RPO at a fraction of active-active cost</td><td>Active-active writes</td></tr>
+        <tr><td class="hook">C</td><td>RDS PostgreSQL db.t4g.micro + cross-region replica</td><td>Cheapest real cross-region DR; SQL Server needs Enterprise for it</td><td>Aurora Global (minimum sizes blow the budget)</td></tr>
+        <tr><td class="hook">E</td><td>Paid plan + budgets + USD 90 kill switch</td><td>EKS needs the Paid plan; the kill switch replaces AWS's removed spend limit</td><td>Free plan (blocks EKS and domains)</td></tr>
+        <tr><td class="hook">S</td><td>Two clusters: up to 6 app pods in Sydney, 4 in Melbourne</td><td>Each control plane is USD 0.10/hr; a third adds cost, not learning</td><td>Three clusters</td></tr>
+        <tr><td class="hook">C</td><td>Cilium as the only CNI, overlay (VXLAN), kube-proxy replacement, Hubble</td><td>Requested CNI replacement without ENI mode; eBPF policy and flow visibility</td><td>VPC CNI chaining, ENI mode</td></tr>
+        <tr><td class="hook">O</td><td>Failure tooling: AWS FIS + Chaos Mesh + Cilium deny policy</td><td>Faults at AWS, pod and network layers; FIS is Sydney-only</td><td>One tool for everything</td></tr>
+        <tr><td class="hook">T</td><td>Playwright for UI + API, GitHub Actions with OIDC</td><td>One toolchain; no stored AWS keys</td><td>Long-lived access keys</td></tr>
+        <tr><td class="hook">S</td><td>Agent skill in the repo</td><td>Versioned with the code it operates</td><td>Skill outside git</td></tr>
+        <tr><td class="hook">T</td><td>Route 53 failover on <code>app.mimidog.click</code></td><td>USD 3/yr domain; health-checked DNS failover with TLS names</td><td>Global Accelerator (hourly fee)</td></tr>
+        <tr><td class="hook">A</td><td>Email alerts via SNS</td><td>Simplest channel; one confirmation per topic</td><td>Chat integrations</td></tr>
+        <tr><td class="hook">R</td><td>PR-based changes</td><td>CI validates every change before it reaches AWS</td><td>Pushing to main</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="lessons">
+    <h2 id="lessons">What the first build taught us</h2>
+    <p class="lede">Ten things broke between bootstrap and the first green <code>/api/ready</code>. Each fix is in the repo and has a row in the skill's troubleshooting runbook.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Layer</th><th>Expected</th><th>What happened</th><th>Fix</th></tr></thead>
+      <tbody id="lessonrows"></tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="gl">
+    <h2 id="gl">Glossary</h2>
+    <ul class="gloss" id="gloss"></ul>
+  </section>
+
+  <footer>Source of truth: <code>docs/PLAYBOOK.md</code> and the Terraform in <code>infra/</code> of mimidoro/tflab-aws. Figures are list-price estimates.</footer>
+</div>
+
+<script>
+(() => {
+  const NS = "http://www.w3.org/2000/svg";
+  const $ = (s) => document.querySelector(s);
+
+  // ---------------------------------------------------------------- model
+  const N = [
+    // global top row
+    { id: "user", x: 40, y: 40, w: 150, h: 58, t: "Users / Playwright", s: "browser, curl, tests", k: "glob", kind: "Client" },
+    { id: "r53", x: 300, y: 34, w: 230, h: 70, t: "Route 53 failover", s: "app.mimidog.click · TTL 60s", k: "glob", kind: "Global DNS" },
+    { id: "gh", x: 880, y: 34, w: 220, h: 70, t: "GitHub Actions", s: "OIDC → tflab-github-actions", k: "glob", kind: "CI/CD" },
+    { id: "ecr", x: 1150, y: 34, w: 210, h: 70, t: "ECR tflab/web, api", s: "arm64 · Syd → Mel replica", k: "glob", kind: "Registry" },
+    // Sydney
+    { id: "albS", x: 90, y: 215, w: 250, h: 62, t: "ALB + ACM TLS", s: "syd.mimidog.click", k: "syd", kind: "Sydney · edge" },
+    { id: "natS", x: 430, y: 215, w: 200, h: 62, t: "NAT instance", s: "fck-nat t4g.nano", k: "syd", kind: "Sydney · egress" },
+    { id: "webS", x: 90, y: 360, w: 150, h: 58, t: "web ×2–3", s: "nginx + React", k: "syd", kind: "Sydney · pods" },
+    { id: "apiS", x: 270, y: 360, w: 150, h: 58, t: "api ×2–3", s: ".NET 10", k: "syd", kind: "Sydney · pods" },
+    { id: "pidS", x: 450, y: 360, w: 180, h: 58, t: "Pod Identity", s: "agent on each node", k: "syd", kind: "Sydney · identity" },
+    { id: "ciliumS", x: 90, y: 446, w: 540, h: 46, t: "Cilium eBPF · VXLAN overlay · Hubble", s: "", k: "syd", kind: "Sydney · network" },
+    { id: "opsS", x: 90, y: 506, w: 540, h: 42, t: "Chaos Mesh · CloudWatch agent · metrics-server", s: "", k: "syd", kind: "Sydney · platform" },
+    { id: "rdsS", x: 90, y: 625, w: 300, h: 66, t: "RDS PostgreSQL · writer", s: "db.t4g.micro · IAM auth · TLS", k: "syd", kind: "Sydney · data" },
+    { id: "fisS", x: 430, y: 625, w: 200, h: 66, t: "AWS FIS", s: "node · DB · AZ · region", k: "syd", kind: "Sydney · chaos" },
+    // Melbourne
+    { id: "albM", x: 770, y: 215, w: 250, h: 62, t: "ALB + ACM TLS", s: "mel.mimidog.click", k: "mel", kind: "Melbourne · edge" },
+    { id: "natM", x: 1110, y: 215, w: 200, h: 62, t: "NAT instance", s: "fck-nat t4g.nano", k: "mel", kind: "Melbourne · egress" },
+    { id: "webM", x: 770, y: 360, w: 150, h: 58, t: "web ×2", s: "nginx + React", k: "mel", kind: "Melbourne · pods" },
+    { id: "apiM", x: 950, y: 360, w: 150, h: 58, t: "api ×2", s: ".NET 10", k: "mel", kind: "Melbourne · pods" },
+    { id: "pidM", x: 1130, y: 360, w: 180, h: 58, t: "Pod Identity", s: "agent on each node", k: "mel", kind: "Melbourne · identity" },
+    { id: "ciliumM", x: 770, y: 446, w: 540, h: 46, t: "Cilium eBPF · VXLAN overlay · Hubble", s: "", k: "mel", kind: "Melbourne · network" },
+    { id: "opsM", x: 770, y: 506, w: 540, h: 42, t: "Chaos Mesh · CloudWatch agent · metrics-server", s: "", k: "mel", kind: "Melbourne · platform" },
+    { id: "rdsM", x: 770, y: 625, w: 300, h: 66, t: "RDS read replica", s: "promote on failover", k: "mel", kind: "Melbourne · data" },
+    { id: "nofisM", x: 1110, y: 625, w: 200, h: 66, t: "No FIS here", s: "no endpoint in ap-southeast-4", k: "mel", kind: "Melbourne · chaos" },
+    // global bottom row
+    { id: "cw", x: 40, y: 800, w: 330, h: 66, t: "CloudWatch alarms → SNS email", s: "per region + us-east-1 failover alarm", k: "glob", kind: "Observability" },
+    { id: "scp", x: 520, y: 800, w: 360, h: 66, t: "Org guardrail policy (SCP)", s: "Syd + Mel + us-east-1 · size caps", k: "glob", kind: "Organization" },
+    { id: "budget", x: 1030, y: 800, w: 330, h: 66, t: "Budget + USD 90 kill switch", s: "25/50/75% alerts · deny-create", k: "glob", kind: "Cost guard" },
+  ];
+  const byId = Object.fromEntries(N.map((n) => [n.id, n]));
+
+  const D = {
+    user: { what: "Anyone hitting the site, plus the Playwright regression suite (9 API + 4 UI tests).", why: "Tests run against the same public hostname users see, so a passing suite proves the whole path - DNS, TLS, ALB, pods, database.", path: "tests/regression/" },
+    r53: { what: "Two alias records for app.mimidog.click: PRIMARY → Sydney ALB (health-checked), SECONDARY → Melbourne ALB.", why: "DNS failover is the cheapest cross-region switch: USD 0.50/month for the zone plus a health check. The check probes /api/ready, which only passes when the API can reach a database.", trade: "Clients cache DNS for up to the 60-second TTL, so traffic moves in about 1–2 minutes, not instantly.", path: "infra/global.tf" },
+    gh: { what: "Workflows: ci, build (arm64), up, down (+ nightly 10:00 UTC), drill, regression.", why: "OIDC federation gives each job short-lived credentials for one role, pinned to this repo and the 'lab' environment, which only runs from main. No AWS keys exist anywhere.", trade: "The role is PowerUser plus IAM limited to tflab-* names - broad enough to build everything, fenced from IAM admin and from changing itself.", lesson: "GitHub now puts immutable IDs into the token subject (repo:mimidoro@7311162/tflab-aws@1426218913:…). The first trust policy only matched names, so every job was refused until both forms were trusted.", path: "bootstrap/github-oidc.tf" },
+    ecr: { what: "Two immutable-tag repositories, scanned on push, keeping the last 10 images, replicated from Sydney to Melbourne.", why: "Each cluster pulls from its own region, so a Sydney outage can't stop Melbourne starting pods. ECR lives in the bootstrap layer so teardown never forces a rebuild.", path: "bootstrap/ecr.tf" },
+    albS: { what: "Application Load Balancer with an ACM certificate for app. and syd.; / → web NodePort 30080, /api/* → api NodePort 30081.", why: "Terraform owns the ALB rather than an in-cluster controller, so teardown can't leave an orphaned load balancer billing. Overlay pod IPs aren't routable from the VPC, so the ALB targets nodes.", trade: "Instance targets add a hop through the node; fine at lab traffic.", path: "infra/modules/core/alb.tf" },
+    albM: { what: "Same as Sydney, certificate for app. and mel.", why: "Identical edge in both regions means failover changes nothing but DNS.", path: "infra/modules/core/alb.tf" },
+    natS: { what: "One fck-nat EC2 instance on t4g.nano routing both private subnets to the internet.", why: "A managed NAT Gateway costs about USD 0.06/hr each plus data; the instance is about USD 0.005/hr.", trade: "Single point of failure for egress and no self-healing - acceptable for a lab, listed in the hardening backlog.", lesson: "The first design used an Auto Scaling group. Its first launch failed and the half-created group then blocked every re-run with AlreadyExists, so the NAT became a plain instance.", path: "infra/modules/core/network.tf" },
+    natM: { what: "Melbourne's own NAT instance.", why: "Pod Identity, image pulls and the EKS API all need egress; each region must stand alone.", path: "infra/modules/core/network.tf" },
+    webS: { what: "Static React build served by unprivileged nginx with CSP, nosniff and frame-deny headers.", why: "Read-only root filesystem, no service-account token, default-deny egress: the web tier can't call anything.", path: "app/web/ · k8s/charts/app/templates/web.yaml" },
+    webM: { what: "Two web replicas on standby.", why: "Melbourne stays warm but small; the autoscaler can grow it after failover.", path: "k8s/charts/app/" },
+    apiS: { what: ".NET 10 minimal API: /api/healthz, /api/ready, /api/info, /api/items (CRUD).", why: "Logs in to PostgreSQL with a 15-minute IAM auth token signed by the pod's own credentials, so no application password exists.", lesson: "The Cilium policy allowed the Pod Identity agent by IP. The agent is the node itself (Cilium's 'host' entity), so the rule never matched, the API timed out fetching credentials and reported the database unreachable.", path: "app/api/Program.cs" },
+    apiM: { what: "Same API against the read-only replica: reads work, writes return 503.", why: "The 503 is deliberate: it proves the standby can't accept writes until it's promoted, and the regression suite checks for it.", path: "app/api/Program.cs" },
+    pidS: { what: "EKS Pod Identity agent on every node at 169.254.170.23:80.", why: "Each service account maps to one IAM role: api → rds-db:connect on its own DB user; db-init → read one secret; cwagent → CloudWatch. Short-lived, rotated, never stored.", lesson: "Network policy must allow it with toEntities: [host], not toCIDR.", path: "infra/modules/platform/iam.tf" },
+    pidM: { what: "Melbourne's agents and role bindings.", why: "Region-scoped roles: Melbourne's API can only connect to Melbourne's database.", path: "infra/modules/platform/iam.tf" },
+    ciliumS: { what: "Cilium is the only CNI: overlay (VXLAN) mode, kube-proxy replaced by eBPF, eBPF masquerade, Hubble relay and UI.", why: "Pod networking, service load-balancing and policy in one eBPF datapath, with flow-level visibility for drills.", trade: "The EKS control plane can't reach overlay pod IPs, so webhook servers (metrics-server, Chaos Mesh) run on the host network. Pod-to-pod traffic isn't encrypted yet (WireGuard is backlog item 4).", path: "k8s/values/cilium.yaml.tftpl" },
+    ciliumM: { what: "Same Cilium build in Melbourne with its own pod range (10.201.0.0/16).", why: "Non-overlapping ranges keep the option of connecting the clusters later.", path: "k8s/values/cilium.yaml.tftpl" },
+    opsS: { what: "Chaos Mesh (pod kill, latency, CPU stress), CloudWatch agent shipping Hubble/Cilium metrics, metrics-server for autoscaling.", why: "In-cluster faults complement AWS-level ones; Hubble drop counts become CloudWatch alarms.", path: "chaos/ · k8s/charts/cwagent/" },
+    opsM: { what: "Same platform add-ons.", why: "Melbourne's only fault tools, since FIS isn't available there.", path: "infra/modules/platform/workloads.tf" },
+    rdsS: { what: "PostgreSQL 17, single-AZ, encrypted, 1-day backups, IAM database authentication, TLS verify-full.", why: "Smallest instance that supports a cross-region replica. The master password is generated at apply time and written only to the database and one secret - never into Terraform state.", lesson: "RDS-managed master passwords block cross-region replicas for PostgreSQL, so the password moved to a write-only argument and our own secret.", path: "infra/modules/core/rds.tf" },
+    rdsM: { what: "Asynchronous cross-region read replica, typically seconds behind. promote-replica.sh fences Sydney, promotes it and checks a marker row survived.", why: "Lag of seconds gives an RPO far inside 15 minutes; promotion takes about 5–10 minutes, inside the 15-minute RTO. A lag alarm fires at 5 minutes.", trade: "Promotion is one-way. Sydney stays fenced (restore refuses, to prevent split brain) until failback.sh re-seeds Sydney from Melbourne, switches back with an RPO check and re-mirrors Melbourne (~60-90 min).", path: "drills/promote-replica.sh · drills/failback.sh" },
+    fisS: { what: "Four experiment templates: terminate half the nodes, reboot the DB, black out one AZ for 5 minutes, black out the region for 10.", why: "AWS-level faults test what Kubernetes can't fake: real instance loss and network partitions.", path: "infra/modules/platform/fis.tf" },
+    nofisM: { what: "Melbourne has no FIS endpoint (as of October 2026).", why: "FIS drills run in Sydney only; Melbourne uses Chaos Mesh, the Cilium deny policy and the RDS API.", lesson: "The first apply failed with 'no such host' for fis.ap-southeast-4.amazonaws.com; FIS is now switched per region.", path: "infra/main.tf (enable_fis)" },
+    cw: { what: "ALB 5xx, unhealthy targets, p95 latency, DB CPU and storage, replica lag, Hubble drops, Cilium unreachable nodes - plus the Route 53 health alarm in us-east-1.", why: "Every drill has a named alarm it should trip, so a drill is a test with an expected result.", trade: "Alarms cost about USD 0.10/month each; Prometheus data stays in a 1-day log group with only four metrics promoted.", path: "infra/modules/core/observability.tf" },
+    scp: { what: "Service control policy on the organization root: only Sydney, Melbourne and us-east-1; EC2 limited to small Graviton types; RDS to db.t4g.micro/small; no reserved capacity.", why: "The account started as an AWS 'project' account allowing one region and no Spot. After activating advanced features, our own policy replaced AWS's region restriction.", lesson: "The size cap first blocked the replica: the check also runs against the source DB, where the class key is absent. A Null guard fixed it.", path: "bootstrap/org/scp-tflab-guardrails.json" },
+    budget: { what: "USD 100 monthly budget net of credits, alerts at 25/50/75% and 100% forecast; at USD 90 actual a budget action attaches a deny-create policy to the deploy role.", why: "Activation removed AWS's hard spend limit for good; this replaces it. Destroy still works when it trips.", trade: "Budget data refreshes about three times a day, so the nightly destroy is the real backstop.", path: "bootstrap/cost-guard.tf" },
+  };
+
+  const E = [
+    // request
+    { id: "e1", a: "user", b: "r53", v: ["request", "failover"], c: "flow", label: "HTTPS" },
+    { id: "e2", a: "r53", b: "albS", v: ["request"], c: "flow", label: "PRIMARY" },
+    { id: "e3", a: "r53", b: "albM", v: ["request"], c: "alt", label: "SECONDARY" },
+    { id: "e4", a: "albS", b: "webS", v: ["request"], c: "flow" },
+    { id: "e5", a: "albS", b: "apiS", v: ["request"], c: "flow", label: "/api/*" },
+    { id: "e6", a: "apiS", b: "rdsS", v: ["request", "data", "security"], c: "flow", label: "TLS + IAM token" },
+    // failover
+    { id: "f1", a: "r53", b: "albS", v: ["failover"], c: "badpath", label: "health check fails" },
+    { id: "f2", a: "r53", b: "albM", v: ["failover"], c: "flow", label: "now serving" },
+    { id: "f3", a: "albM", b: "webM", v: ["failover"], c: "flow" },
+    { id: "f4", a: "albM", b: "apiM", v: ["failover"], c: "flow" },
+    { id: "f5", a: "apiM", b: "rdsM", v: ["failover", "data"], c: "flow", label: "reads; writes after promote" },
+    { id: "f6", a: "r53", b: "cw", v: ["failover", "observe"], c: "obs", label: "us-east-1 alarm" },
+    // data
+    { id: "d1", a: "rdsS", b: "rdsM", v: ["data", "failover"], c: "rep", label: "async replication · seconds" },
+    // security
+    { id: "s1", a: "gh", b: "ecr", v: ["security"], c: "sec", label: "push images" },
+    { id: "s3", a: "apiS", b: "pidS", v: ["security"], c: "sec", label: "credentials" },
+    { id: "s4", a: "apiM", b: "pidM", v: ["security"], c: "sec", label: "credentials" },
+    { id: "s5", a: "scp", b: "rdsS", v: ["security"], c: "sec", label: "region + size caps" },
+    { id: "s6", a: "scp", b: "rdsM", v: ["security"], c: "sec" },
+    { id: "s7", a: "budget", b: "gh", v: ["security", "cost"], c: "sec", label: "deny-create at USD 90" },
+    { id: "s8", a: "pidS", b: "natS", v: ["security"], c: "sec", label: "EKS Auth via NAT" },
+    // observe
+    { id: "o1", a: "opsS", b: "cw", v: ["observe"], c: "obs", label: "Hubble metrics" },
+    { id: "o2", a: "opsM", b: "cw", v: ["observe"], c: "obs" },
+    { id: "o3", a: "fisS", b: "rdsS", v: ["observe"], c: "obs", label: "reboot / blackout" },
+    { id: "o4", a: "fisS", b: "ciliumS", v: ["observe"], c: "obs", label: "kill nodes" },
+  ];
+
+  const VIEWS = [
+    { id: "request", name: "Request path", title: "Normal day: Sydney serves everything", note: "Users resolve app.mimidog.click to Sydney's ALB. /api/* goes to the API, which logs in to the Sydney writer with an IAM token over TLS. Melbourne is warm but receives no traffic.", focus: ["user", "r53", "albS", "webS", "apiS", "rdsS", "ciliumS", "rdsM", "albM"] },
+    { id: "failover", name: "Failover", title: "Sydney's health check fails", note: "Three failed probes of /api/ready (10-second interval) mark Sydney unhealthy. Route 53 answers with Melbourne within about a minute, plus the 60s TTL. Reads work at once; writes return 503 until promote-replica.sh makes Melbourne the writer. Target: 15 minutes.", focus: ["user", "r53", "albS", "albM", "webM", "apiM", "rdsM", "rdsS", "cw"], badges: { albS: ["DOWN", "bad"], rdsM: ["PROMOTE", "mel"], r53: ["→ MEL", "ok"] } },
+    { id: "data", name: "Data & DR", title: "RPO: how much data can we lose?", note: "The Melbourne replica trails Sydney by seconds; an alarm fires if lag passes 5 minutes, ten minutes before the 15-minute RPO is at risk. The promote drill writes a marker in Sydney, fences Sydney, promotes Melbourne and checks the marker arrived. Fail-back reverses it: Sydney is re-seeded as a replica of Melbourne, then switched back the same way.", focus: ["apiS", "rdsS", "rdsM", "apiM", "ecr"], badges: { rdsS: ["WRITER", "syd"], rdsM: ["LAG ≈ s", "mel"] } },
+    { id: "security", name: "Security", title: "Identity first, no stored secrets", note: "GitHub gets short-lived AWS credentials through OIDC. Pods get theirs from Pod Identity. The API's database login is a 15-minute IAM token. The org policy fences regions and instance sizes, and the budget action can stop all new spend.", focus: ["gh", "ecr", "apiS", "apiM", "pidS", "pidM", "rdsS", "rdsM", "scp", "budget", "natS"] },
+    { id: "observe", name: "Observe & break", title: "Every drill has an alarm it should trip", note: "Hubble sees flows and drops; the CloudWatch agent turns the important counters into alarms. FIS breaks AWS (Sydney only); Chaos Mesh and a Cilium deny policy break things inside the cluster. Watch the email, then run the regression suite.", focus: ["ciliumS", "ciliumM", "opsS", "opsM", "fisS", "nofisM", "cw", "rdsS", "r53"] },
+    { id: "cost", name: "Cost", title: "About USD 0.45–0.70 an hour while up", note: "USD 100 of credit buys roughly 150–200 lab hours. Teardown leaves only cents a month: state bucket, OIDC role, ECR images, budget and the USD 3/yr domain. Figures are list-price estimates per hour for both regions combined unless noted.", focus: ["albS", "albM", "natS", "natM", "rdsS", "rdsM", "ciliumS", "ciliumM", "r53", "cw", "budget"], badges: { ciliumS: ["EKS 0.10 + nodes ~0.04", "syd"], ciliumM: ["EKS 0.10 + nodes ~0.03", "mel"], albS: ["~0.03", "syd"], albM: ["~0.03", "mel"], natS: ["~0.01", "syd"], natM: ["~0.01", "mel"], rdsS: ["~0.025", "syd"], rdsM: ["~0.025", "mel"], r53: ["0.50/mo + check", "ok"], cw: ["cents", "ok"], budget: ["2 free", "ok"] } },
+  ];
+
+  const LESSONS = [
+    ["Account", "Standalone account with Identity Center", "AWS 'project' account: one region, no Spot, Identity Center denied", "Activated advanced features; our SCP replaced AWS's region restriction; CLI via aws login"],
+    ["Plan", "Domain registration works", "Free plan refuses Route 53 Domains", "Upgraded to the Paid plan; credits carried over"],
+    ["CLI", "aws login picks the lab account", "Picked the management account first", "Bootstrap refuses the management account"],
+    ["CI identity", "OIDC subject repo:mimidoro/tflab-aws:…", "Subject carries immutable IDs", "Trust both forms"],
+    ["Guardrails", "Replica allowed at db.t4g.micro", "Size cap denied it on the source DB (key absent)", "Null guard on the size-cap statements"],
+    ["Database", "Replica of a managed-password primary", "AWS rejects it for PostgreSQL", "Write-only password into our own secret"],
+    ["Chaos", "FIS in both regions", "No FIS endpoint in Melbourne", "enable_fis per region"],
+    ["Egress", "NAT Auto Scaling group self-heals", "Launch failed; orphan blocked re-runs", "Single NAT instance; leftovers sweep checks ASGs"],
+    ["Access", "You can use kubectl after a CI apply", "Only the CI role was cluster admin", "Console role added to EKS access entries"],
+    ["Pod network", "API gets credentials from Pod Identity", "Cilium dropped it: the agent is the host entity", "toEntities: [host]; delete old policies before the first upgrade"],
+  ];
+
+  const GLOSS = [
+    ["ACM", "AWS Certificate Manager - TLS certificates on the ALBs"], ["ALB", "Application Load Balancer"], ["AZ", "Availability Zone"],
+    ["CI/CD", "Continuous integration and delivery"], ["CNI", "Container Network Interface - gives pods their network"], ["DR", "Disaster recovery"],
+    ["eBPF", "In-kernel programs Cilium uses for networking and policy"], ["ECR", "Elastic Container Registry"], ["EKS", "Elastic Kubernetes Service"],
+    ["FIS", "AWS Fault Injection Service"], ["Hubble", "Cilium's flow observability layer"], ["IAM", "Identity and Access Management"],
+    ["NAT", "Network Address Translation - private nodes reach the internet"], ["OIDC", "OpenID Connect - short-lived credentials for GitHub Actions"], ["RDS", "Relational Database Service"],
+    ["RPO", "Recovery Point Objective - maximum data loss (15 min)"], ["RTO", "Recovery Time Objective - maximum time to restore (15 min)"], ["SCP", "Service control policy - organization-wide permission guardrail"],
+    ["SNS", "Simple Notification Service"], ["Spot", "Spare EC2 capacity at a discount; can be reclaimed"], ["TLS", "Transport Layer Security"],
+    ["TTL", "Time to live - how long DNS answers are cached"], ["VPC", "Virtual Private Cloud"], ["VXLAN", "The tunnel Cilium uses between nodes in overlay mode"],
+  ];
+
+  // ---------------------------------------------------------------- drawing
+  const vp = $("#vp");
+  const el = (tag, attrs = {}, parent) => {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+
+  // grid
+  const g0 = el("g", {}, vp);
+  for (let x = 0; x <= 1400; x += 50) el("line", { x1: x, y1: 0, x2: x, y2: 900, class: "grid-line" }, g0);
+  for (let y = 0; y <= 900; y += 50) el("line", { x1: 0, y1: y, x2: 1400, y2: y, class: "grid-line" }, g0);
+
+  // region + cluster zones
+  const zones = el("g", {}, vp);
+  const zone = (x, y, w, h, label, color, cls) => {
+    const g = el("g", { class: "zone " + cls }, zones);
+    el("rect", { x, y, width: w, height: h, rx: 12, class: "region", stroke: color }, g);
+    const t = el("text", { x: x + 14, y: y + 22, class: "region-label", fill: color }, g);
+    t.textContent = label;
+    return g;
+  };
+  zone(60, 150, 600, 620, "SYDNEY · ap-southeast-2 · PRIMARY", "var(--syd)", "zs");
+  zone(740, 150, 600, 620, "MELBOURNE · ap-southeast-4 · STANDBY", "var(--mel)", "zm");
+  const cl = (x, label, color) => {
+    el("rect", { x, y: 320, width: 570, height: 245, rx: 10, fill: "none", stroke: color, "stroke-opacity": 0.45, "stroke-width": 1.2 }, zones);
+    const t = el("text", { x: x + 12, y: 340, class: "region-label", fill: color, "font-size": 11 }, zones);
+    t.textContent = label;
+  };
+  cl(75, "EKS tflab-syd · Spot Graviton nodes ×2", "var(--syd)");
+  cl(755, "EKS tflab-mel · Spot Graviton nodes ×2", "var(--mel)");
+
+  const edgesG = el("g", {}, vp);
+  const nodesG = el("g", {}, vp);
+
+  const center = (n) => [n.x + n.w / 2, n.y + n.h / 2];
+  const anchor = (n, tx, ty) => {
+    const [cx, cy] = center(n);
+    const dx = tx - cx, dy = ty - cy;
+    if (!dx && !dy) return [cx, cy];
+    const sx = (n.w / 2) / Math.abs(dx || 1e-6), sy = (n.h / 2) / Math.abs(dy || 1e-6);
+    const s = Math.min(sx, sy);
+    return [cx + dx * s, cy + dy * s];
+  };
+
+  const edgeEls = {};
+  for (const e of E) {
+    const a = byId[e.a], b = byId[e.b];
+    const [bx, by] = center(b), [ax, ay] = center(a);
+    const p1 = anchor(a, bx, by), p2 = anchor(b, ax, ay);
+    const g = el("g", { class: "edge " + e.c }, edgesG);
+    const midx = (p1[0] + p2[0]) / 2, midy = (p1[1] + p2[1]) / 2;
+    const bend = e.id === "d1" ? -40 : 0;
+    el("path", { d: `M${p1[0]},${p1[1]} Q${midx},${midy + bend} ${p2[0]},${p2[1]}` }, g);
+    if (e.label) {
+      const t = el("text", { x: midx, y: midy + bend / 2 - 6, "text-anchor": "middle" }, g);
+      t.textContent = e.label;
+    }
+    edgeEls[e.id] = g;
+  }
+
+  const nodeEls = {};
+  for (const n of N) {
+    const g = el("g", { class: "node " + n.k, tabindex: 0, role: "button", "aria-label": n.t + " - details" }, nodesG);
+    el("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 8, class: "card" }, g);
+    const single = !n.s;
+    const t = el("text", { x: n.x + 12, y: n.y + (single ? n.h / 2 + 5 : 24), class: "t" }, g);
+    t.textContent = n.t;
+    if (!single) {
+      const s = el("text", { x: n.x + 12, y: n.y + 44, class: "s" }, g);
+      s.textContent = n.s;
+    }
+    const bg = el("g", { class: "badge", visibility: "hidden" }, g);
+    el("rect", { x: n.x + n.w - 8, y: n.y - 11, width: 10, height: 20, rx: 10 }, bg);
+    el("text", { x: n.x + n.w - 3, y: n.y + 3, "text-anchor": "end" }, bg);
+    g.addEventListener("click", () => select(n.id));
+    g.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); select(n.id); } });
+    nodeEls[n.id] = { g, badge: bg, n };
+  }
+
+  const setBadge = (id, text, tone) => {
+    const { badge, n } = nodeEls[id];
+    if (!text) { badge.setAttribute("visibility", "hidden"); return; }
+    const t = badge.querySelector("text"), r = badge.querySelector("rect");
+    t.textContent = text;
+    const w = Math.max(40, text.length * 7 + 16);
+    r.setAttribute("x", n.x + n.w - w + 6); r.setAttribute("width", w);
+    t.setAttribute("x", n.x + n.w - 2);
+    r.setAttribute("fill", `var(--${tone})`);
+    t.setAttribute("fill", "var(--surface)");
+    badge.setAttribute("visibility", "visible");
+  };
+
+  // ---------------------------------------------------------------- panel
+  let selected = null;
+  const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const select = (id) => {
+    if (selected) nodeEls[selected].g.classList.remove("sel");
+    selected = id;
+    nodeEls[id].g.classList.add("sel");
+    const n = byId[id], d = D[id];
+    $("#panel").innerHTML = `
+      <span class="kind">${esc(n.kind)}</span>
+      <h2>${esc(n.t)}</h2>
+      <dl>
+        <div><dt>What it is</dt><dd>${esc(d.what)}</dd></div>
+        <div><dt>Why this way</dt><dd>${esc(d.why)}</dd></div>
+        ${d.trade ? `<div><dt>Trade-off accepted</dt><dd>${esc(d.trade)}</dd></div>` : ""}
+        ${d.lesson ? `<div class="lesson"><dt>Learned on the first build</dt><dd>${esc(d.lesson)}</dd></div>` : ""}
+        <div><dt>In the repo</dt><dd><code>${esc(d.path)}</code></dd></div>
+      </dl>`;
+  };
+
+  // ---------------------------------------------------------------- views
+  const viewsNav = $("#views");
+  const applyView = (id, push) => {
+    const v = VIEWS.find((x) => x.id === id) || VIEWS[0];
+    for (const b of viewsNav.children) b.setAttribute("aria-pressed", String(b.dataset.v === v.id));
+    const focus = new Set(v.focus);
+    for (const [nid, o] of Object.entries(nodeEls)) {
+      o.g.classList.toggle("dim", !focus.has(nid));
+      const bd = v.badges && v.badges[nid];
+      setBadge(nid, bd ? bd[0] : "", bd ? bd[1] : "");
+    }
+    for (const e of E) edgeEls[e.id].style.display = e.v.includes(v.id) ? "" : "none";
+    document.querySelectorAll(".zone").forEach((z) => z.classList.toggle("dim", v.id === "failover" && z.classList.contains("zs")));
+    $("#viewnote").innerHTML = `<strong>${esc(v.title)}</strong><p>${esc(v.note)}</p>`;
+    if (push) { try { history.replaceState(null, "", "#" + v.id); } catch (_) {} }
+    try { localStorage.setItem("tflab-arch-view", v.id); } catch (_) {}
+  };
+  for (const v of VIEWS) {
+    const b = document.createElement("button");
+    b.type = "button"; b.dataset.v = v.id; b.textContent = v.name;
+    b.addEventListener("click", () => applyView(v.id, true));
+    viewsNav.appendChild(b);
+  }
+
+  // ---------------------------------------------------------------- zoom / pan / pinch
+  const svg = $("#svg");
+  let k = 1, tx = 0, ty = 0;
+  const render = () => vp.setAttribute("transform", `translate(${tx},${ty}) scale(${k})`);
+  const toSvg = (cx, cy) => {
+    const r = svg.getBoundingClientRect();
+    const s = Math.max(1400 / r.width, 900 / r.height);
+    const ox = (r.width * s - 1400) / 2, oy = (r.height * s - 900) / 2;
+    return [(cx - r.left) * s - ox, (cy - r.top) * s - oy, s];
+  };
+  const zoomAt = (px, py, f) => {
+    const nk = Math.min(4, Math.max(0.5, k * f));
+    tx = px - (px - tx) * (nk / k); ty = py - (py - ty) * (nk / k); k = nk; render();
+  };
+  svg.addEventListener("wheel", (ev) => { ev.preventDefault(); const [x, y] = toSvg(ev.clientX, ev.clientY); zoomAt(x, y, ev.deltaY < 0 ? 1.15 : 1 / 1.15); }, { passive: false });
+  const pts = new Map();
+  let last = null, pinch0 = null;
+  svg.addEventListener("pointerdown", (ev) => {
+    if (ev.target.closest(".node")) return;
+    svg.setPointerCapture(ev.pointerId);
+    pts.set(ev.pointerId, [ev.clientX, ev.clientY]);
+    svg.classList.add("dragging");
+    if (pts.size === 1) last = toSvg(ev.clientX, ev.clientY);
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), k }; }
+  });
+  svg.addEventListener("pointermove", (ev) => {
+    if (!pts.has(ev.pointerId)) return;
+    pts.set(ev.pointerId, [ev.clientX, ev.clientY]);
+    if (pts.size === 2 && pinch0) {
+      const [a, b] = [...pts.values()];
+      const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      const [mx, my] = toSvg((a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+      zoomAt(mx, my, (pinch0.k * d / pinch0.d) / k);
+    } else if (pts.size === 1 && last) {
+      const p = toSvg(ev.clientX, ev.clientY);
+      tx += p[0] - last[0]; ty += p[1] - last[1]; last = p; render();
+    }
+  });
+  const end = (ev) => { pts.delete(ev.pointerId); if (pts.size < 2) pinch0 = null; if (!pts.size) { last = null; svg.classList.remove("dragging"); } else { const p = [...pts.values()][0]; last = toSvg(p[0], p[1]); } };
+  svg.addEventListener("pointerup", end); svg.addEventListener("pointercancel", end);
+  $("#zin").addEventListener("click", () => zoomAt(700, 450, 1.25));
+  $("#zout").addEventListener("click", () => zoomAt(700, 450, 0.8));
+  $("#zfit").addEventListener("click", () => { k = 1; tx = 0; ty = 0; render(); });
+
+  // ---------------------------------------------------------------- tables
+  $("#lessonrows").innerHTML = LESSONS.map((r) => `<tr>${r.map((c, i) => `<td${i === 0 ? ' class="hook"' : ""}>${esc(c)}</td>`).join("")}</tr>`).join("");
+  $("#gloss").innerHTML = GLOSS.map(([a, b]) => `<li><b>${a}</b> - ${esc(b)}</li>`).join("");
+
+  // ---------------------------------------------------------------- start
+  let start = (location.hash || "").slice(1);
+  if (!VIEWS.some((v) => v.id === start)) { try { start = localStorage.getItem("tflab-arch-view") || "request"; } catch (_) { start = "request"; } }
+  applyView(start, false);
+  select("r53");
+  render();
+})();
+</script>
+
+</body>
+</html>
