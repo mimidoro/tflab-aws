@@ -15,6 +15,7 @@ to OK) before the next. Workflow equivalent: `gh workflow run drill.yml -f drill
 | **A**Z | az-blackout | `drills/drill.sh az-blackout syd` | unhealthy targets in one AZ | 5 min |
 | **R**egion | failover * | `drills/drill.sh failover syd --yes` | us-east-1 tflab-FAILOVER-sydney-unhealthy; app serves Melbourne (read-only) | auto fail-back |
 | **R**egion | region-blackout * | `drills/drill.sh region-blackout syd --yes` | as failover + unhealthy targets | 10 min |
+| **R**egion | failover-write * | `drills/drill.sh failover-write syd --yes` | one step: fence Sydney + promote Melbourne at once; Melbourne **writable in ~2-5 min**, traffic moves in ~1-2 min; Sydney stays fenced | `failback` |
 | **D**B | promote-replica * | `drills/drill.sh promote-replica mel --yes` | Melbourne writable; RPO marker check; **Sydney stays fenced** | `failback` |
 | **D**B | failback * | `drills/drill.sh failback mel --yes` | Sydney re-seeded from Melbourne, switched back with an RPO marker check, Melbourne re-mirrored, Terraform state reconciled | ~60-90 min |
 
@@ -38,7 +39,7 @@ Each phase starts only when the previous one is green (alarms OK, regression pas
 | 1 POD | pod-kill, web-down, latency, cpu-stress (syd); db-block (mel) | reading Hubble + logs; alarms fire and clear | none |
 | 2 INFRA | node-kill, db-reboot, az-blackout (syd, FIS) | self-healing; db-reboot also triggers DNS failover | minutes of 5xx |
 | 3 DNS | `failover syd --yes` with `drills/rto-watch.sh 900` in a 2nd terminal | traffic RTO (expect 1-2 min) | read-only for minutes |
-| 4 DATA | `promote-replica mel --yes`, regression vs `mel`, then `failback mel --yes` | real RTO + RPO both ways | one-way until failback completes |
+| 4 DATA | `failover-write syd --yes` (same as `promote-replica mel --yes`), regression vs `mel`, then `failback mel --yes` | real RTO + RPO both ways | one-way until failback completes |
 
 Finish with `make report` -> `docs/gameday/<date>.md` (drill start, alarms fired, detect/recover
 times, RTO/RPO results) and commit it. Log any expected-vs-observed difference in `improve.md`.
