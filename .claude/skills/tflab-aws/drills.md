@@ -70,3 +70,45 @@ Then run `up` once. Resumable: if interrupted after R3, re-running starts at R4.
 ## Always finish with
 
 `drills/drill.sh restore <region>` for every region you touched, then the regression suite.
+
+## Run sheet: failover-write with login (LOGIN-CHECK-BREAK-WATCH-BACK)
+
+Codespace, terminal 1. Start before ~8pm NZ so fail-back finishes before the 11pm nightly destroy.
+
+```bash
+# LOGIN - lab account only (073019354521), never the management account (996241422033)
+aws login --remote --profile tflab-admin          # region prompt: ap-southeast-2; pick the lab session
+export AWS_PROFILE=tflab-admin
+aws sts get-caller-identity --query Account --output text   # must print 073019354521
+# wrong account: aws logout --profile tflab-admin, then repeat
+
+# CHECK - fresh main, lab up, baseline green
+git checkout main && git pull
+make kubeconfig
+curl -s https://app.mimidog.click/api/info | jq '{region, dbWritable}'   # Sydney, true
+curl -s https://mel.mimidog.click/api/ready | jq                         # writable: false
+make test TARGET=app
+
+# BREAK - fence Sydney + promote Melbourne (destructive)
+drills/drill.sh failover-write syd --yes
+```
+
+Terminal 2, the same login (`export AWS_PROFILE=tflab-admin`), started just before BREAK:
+
+```bash
+# WATCH
+drills/rto-watch.sh 900
+```
+
+After PROVE reports "Melbourne WRITABLE":
+
+```bash
+make test TARGET=mel
+curl -s https://app.mimidog.click/api/info | jq '{region, dbWritable}'   # Melbourne, true
+
+# BACK - 60-90 min; run `aws login` again first if the session has expired
+drills/drill.sh failback mel --yes
+make up                       # once, after fail-back
+make test TARGET=app
+make report                   # docs/gameday/<date>.md - commit it
+```
