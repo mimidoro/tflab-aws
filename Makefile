@@ -7,7 +7,7 @@ DRILL ?= list
 REGION ?= syd
 TARGET ?= app
 
-.PHONY: help bootstrap build up down drill test leftovers kubeconfig observe hubble fmt
+.PHONY: help bootstrap build up down drill report test leftovers kubeconfig observe hubble fmt
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -26,6 +26,9 @@ down: ## DRAIN teardown + leftovers sweep
 
 drill: ## make drill DRILL=db-block REGION=syd   (make drill = catalogue)
 	./drills/drill.sh $(DRILL) $(REGION)
+
+report: ## game-day report -> docs/gameday/<date>.md
+	./drills/report.sh
 
 test: ## regression suite: make test TARGET=app|syd|mel
 	cd tests/regression && npm ci && npx playwright install chromium && BASE_URL=https://$(TARGET).mimidog.click npx playwright test

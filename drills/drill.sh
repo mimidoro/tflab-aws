@@ -34,6 +34,7 @@ az-blackout      AZ        AWS FIS*    unhealthy targets in one AZ; traffic shif
 failover         Region    Cilium      syd only: db-block + RTO timer -> app.mimidog.click serves Melbourne
 region-blackout  Region    AWS FIS     syd only: private subnets cut 10 min -> Route 53 failover
 promote-replica  Database  RDS API     mel only, DESTRUCTIVE: fence syd, promote replica, report RPO/RTO
+failback         Database  RDS API     mel only, after promote: Sydney re-seeded from Melbourne, switched back (~60 min)
 restore          -         -           remove drill policies/experiments in a region
 * AWS FIS drills: syd only (no FIS endpoint in Melbourne)
 EOF
@@ -59,6 +60,7 @@ db_unblock() { k -n app delete ciliumnetworkpolicy drill-db-block --ignore-not-f
 
 [[ "$DRILL" == "list" ]] && { usage; exit 0; }
 need_region_key "$KEY"
+gd_log "drill:$DRILL" "$KEY"
 
 case "$DRILL" in
   pod-kill)   ctx "$KEY"; apply_exp pod-kill-api ;;
@@ -94,8 +96,17 @@ case "$DRILL" in
     [[ "$KEY" == "mel" ]] || die "promote-replica runs against the standby (mel)"
     "$REPO_ROOT/drills/promote-replica.sh" ;;
 
+  failback)
+    [[ "$KEY" == "mel" ]] || die "failback starts from the promoted writer (mel)"
+    "$REPO_ROOT/drills/failback.sh" ;;
+
   restore)
     ctx "$KEY"
+    # G1 split-brain guard: once Melbourne has been promoted, Sydney's database is stale.
+    # Unfencing Sydney would let Route 53 send users back to it. Fail back instead.
+    if [[ "$KEY" == "syd" ]] && db_exists mel && [[ -z "$(db_source mel)" ]] && [[ "$(db_source syd)" != *tflab-mel-pg* ]]; then
+      die "Melbourne is the promoted writer - unfencing Sydney would serve stale data (split brain). Fail back with: drills/drill.sh failback mel --yes"
+    fi
     db_unblock
     k delete podchaos,networkchaos,stresschaos --all -A --wait=false >/dev/null 2>&1 || true
     ok "chaos experiments removed in $KEY" ;;

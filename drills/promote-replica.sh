@@ -59,4 +59,7 @@ if [[ -n "$created" ]]; then
   fi
 fi
 echo "   app.$DOMAIN now serves: $(serving_region)"
-echo "   Fail back: scripts/down.sh && scripts/up.sh (rebuilds the replica topology)."
+rpo_result=$([[ -z "$created" ]] && echo "n/a" || (curl -fsS --max-time 5 "${URL_OF[mel]}/api/items" | jq -e --arg m "$marker" 'any(.[]; .text == $m)' >/dev/null && echo "no-loss" || echo "lost"))
+gd_log "promote" "mel" "rto_s=$rto" "rpo=$rpo_result" "lag_s=$lag"
+echo "   Sydney STAYS FENCED (its database is now stale). Do not run 'restore syd'."
+echo "   Fail back: drills/drill.sh failback mel --yes   (re-seeds Sydney from Melbourne, ~60 min)"

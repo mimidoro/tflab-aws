@@ -24,12 +24,14 @@ while (( $(date +%s) - start < MAX )); do
   fi
   if [[ -n "$switched_at" && "$writable" == "true" ]]; then
     ok "writes available in $region after ${el}s"
+    gd_log "rto-watch" "-" "traffic_s=$switched_at" "writes_s=$el" "to=${region// /_}"
     (( el <= 900 )) && ok "RTO met (<= 15 min)" || warn "RTO MISSED (> 15 min)"
     exit 0
   fi
   sleep 5
 done
 
+gd_log "rto-watch" "-" "traffic_s=${switched_at:-none}" "writes_s=none"
 if [[ -n "$switched_at" ]]; then
   warn "traffic failed over after ${switched_at}s but standby is still read-only - run: drills/drill.sh promote-replica mel"
 else

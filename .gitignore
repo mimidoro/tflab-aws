@@ -24,3 +24,6 @@ obj/
 .DS_Store
 .vscode/
 .idea/
+
+# Game-day event log (drills/report.sh turns it into docs/gameday/<date>.md)
+.gameday/
