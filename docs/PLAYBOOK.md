@@ -34,6 +34,8 @@ managed NAT Gateways (~USD 0.06/hr each - replaced by a NAT instance).
 
 ## 2. Architecture
 
+**Interactive version:** `docs/ARCH-tflabAWS-TwoRegionEKS-20261021.html` - open it in a browser for six views (request path, failover, data and DR, security, observe and break, cost), zoom/pan, and the reasoning plus first-build lessons for every component.
+
 ```mermaid
 flowchart TB
   user([User / Playwright]) --> r53{{"Route 53<br/>app.mimidog.click<br/>failover record"}}
