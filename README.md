@@ -8,7 +8,7 @@ Two-region, active-passive Kubernetes lab on AWS, built to run on **USD 100 of c
 - **Failure drills** for every layer (AWS FIS, Chaos Mesh, Cilium policies) and a **Playwright** regression suite
 - **Ephemeral by design**: stand up, demo, tear down; nightly auto-destroy
 
-Full guide: **[docs/PLAYBOOK.md](docs/PLAYBOOK.md)** · Interactive architecture: [docs/ARCH-tflabAWS-TwoRegionEKS-20261021.html](docs/ARCH-tflabAWS-TwoRegionEKS-20261021.html) (download and open in a browser - six views, zoom/pan, the reasoning per component) · Agent skill: [.claude/skills/tflab-aws](.claude/skills/tflab-aws/SKILL.md)
+Full guide: **[docs/PLAYBOOK.md](docs/PLAYBOOK.md)** · Interactive architecture: [docs/ARCH-tflabAWS-TwoRegionEKS-20261021.html](docs/ARCH-tflabAWS-TwoRegionEKS-20261021.html) (download and open in a browser - six views, zoom/pan, the reasoning per component) · Network & security: [docs/ARCH-tflabAWS-NetSec-20261021.html](docs/ARCH-tflabAWS-NetSec-20261021.html) · Agent skill: [.claude/skills/tflab-aws](.claude/skills/tflab-aws/SKILL.md)
 
 ```mermaid
 flowchart LR

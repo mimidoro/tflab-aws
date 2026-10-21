@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>[hidden]{display:none!important} body{margin:0} img{max-width:100%}</style>
+<title>tflab-aws Network & Security</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: same blueprint system as the overview page - view switcher, zoomable VPC canvas with a
+   step-through packet walk, detail panel, then the evidence tables (address plan, SG matrix,
+   Cilium policies, encryption by hop, decisions, risk register). */
+:root {
+  --bg: #f3f6f7; --surface: #ffffff; --fg: #14212b; --muted: #5b6b76; --line: #c9d4da; --grid: #e3eaee;
+  --accent: #0e7470; --pub: #2557a7; --priv: #6a4fb0; --db: #a3620a; --pod: #0e7470;
+  --bad: #b8392a; --ok: #2c7a3c; --dim: 0.16;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1519; --surface: #152027; --fg: #e3ebef; --muted: #93a5b0; --line: #2d3c45; --grid: #1a272e;
+    --accent: #3fbab3; --pub: #7ea6ec; --priv: #b49cf0; --db: #e3a34c; --pod: #3fbab3; --bad: #ef7d6c; --ok: #6cc47c; --dim: 0.2;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1519; --surface: #152027; --fg: #e3ebef; --muted: #93a5b0; --line: #2d3c45; --grid: #1a272e;
+  --accent: #3fbab3; --pub: #7ea6ec; --priv: #b49cf0; --db: #e3a34c; --pod: #3fbab3; --bad: #ef7d6c; --ok: #6cc47c; --dim: 0.2;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--f-body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.wrap { max-width: 1320px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 48px; display: grid; gap: 28px; }
+h1, h2 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.1; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 22px; font-weight: 700; }
+p { margin: 0; }
+.lede { max-width: 70ch; color: var(--muted); font-size: 16px; }
+.eyebrow { font: 600 11px/1 var(--f-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+header { display: grid; gap: 10px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font: 12px var(--f-mono); color: var(--muted); }
+.views { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 8px; display: flex; gap: 6px; overflow-x: auto; }
+.views button, .step button { flex: none; font: 600 13px var(--f-body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; cursor: pointer; }
+.views button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+button:focus-visible, .node:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+@media (max-width: 980px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+.canvas { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; min-width: 0; }
+.canvas svg { display: block; width: 100%; height: min(74vh, 660px); touch-action: none; cursor: grab; user-select: none; }
+.canvas svg.dragging { cursor: grabbing; }
+.tools { position: absolute; right: 10px; top: 10px; display: flex; gap: 4px; }
+.tools button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: 600 16px var(--f-mono); cursor: pointer; }
+.hint { position: absolute; left: 12px; top: 14px; font: 11px var(--f-mono); color: var(--muted); background: var(--surface); padding: 2px 6px; border-radius: 4px; }
+.viewnote { padding: 12px 16px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.viewnote strong { font-family: var(--f-display); font-size: 17px; }
+.step { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.step span { font: 600 12px var(--f-mono); color: var(--muted); }
+
+.grid-line { stroke: var(--grid); stroke-width: 1; }
+.zone rect { fill: none; stroke-width: 1.4; }
+.zone text { font: 600 12.5px var(--f-mono); letter-spacing: 0.04em; }
+.zone.vpc rect { stroke: var(--fg); stroke-width: 1.6; }
+.zone.pub rect { stroke: var(--pub); fill: color-mix(in srgb, var(--pub) 5%, transparent); }
+.zone.priv rect { stroke: var(--priv); fill: color-mix(in srgb, var(--priv) 5%, transparent); }
+.zone.dbz rect { stroke: var(--db); fill: color-mix(in srgb, var(--db) 6%, transparent); }
+.zone.nodez rect { stroke: var(--pod); stroke-dasharray: 5 4; }
+.zone.az rect { stroke: var(--line); stroke-dasharray: 2 5; }
+.zone.az text { fill: var(--muted); }
+.node { cursor: pointer; transition: opacity .25s; }
+.node rect.card { fill: var(--surface); stroke: var(--line); stroke-width: 1.4; }
+.node.pub rect.card { stroke: var(--pub); }
+.node.priv rect.card { stroke: var(--priv); }
+.node.db rect.card { stroke: var(--db); }
+.node.pod rect.card { stroke: var(--pod); }
+.node.ext rect.card { stroke: var(--muted); stroke-dasharray: 4 3; }
+.node text.t { font: 600 14px var(--f-body); fill: var(--fg); }
+.node text.s { font: 11.5px var(--f-mono); fill: var(--muted); }
+.node.sel rect.card { stroke-width: 3; }
+.node.hot rect.card { stroke: var(--accent); stroke-width: 3.2; }
+.dim { opacity: var(--dim); }
+.edge { transition: opacity .25s; }
+.edge path { fill: none; stroke: var(--muted); stroke-width: 1.8; }
+.edge.flow path { stroke: var(--accent); stroke-width: 2.6; stroke-dasharray: 8 6; }
+.edge.vx path { stroke: var(--priv); stroke-width: 3; stroke-dasharray: 2 5; stroke-linecap: round; }
+.edge.egress path { stroke: var(--db); stroke-width: 2; stroke-dasharray: 6 4; }
+.edge.deny path { stroke: var(--bad); stroke-width: 2; stroke-dasharray: 3 5; }
+.edge.hot path { stroke: var(--accent); stroke-width: 3.6; }
+.edge text { font: 11px var(--f-mono); fill: var(--fg); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; }
+@media (prefers-reduced-motion: no-preference) { .edge.flow path, .edge.hot path { animation: march 1.1s linear infinite; } }
+@keyframes march { to { stroke-dashoffset: -28; } }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 12px; min-width: 0; }
+.panel .kind { font: 600 11px var(--f-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.panel dl { margin: 0; display: grid; gap: 10px; }
+.panel dt { font: 600 11px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.panel dd { margin: 2px 0 0; }
+code { font: 12.5px var(--f-mono); background: var(--grid); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.warn { border-left: 3px solid var(--bad); padding-left: 10px; }
+section { display: grid; gap: 14px; }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 11px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: var(--bg); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.mono { font: 13px var(--f-mono); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pill { display: inline-block; font: 600 11px var(--f-mono); padding: 2px 8px; border-radius: 999px; color: var(--surface); white-space: nowrap; }
+.pill.ok { background: var(--ok); } .pill.bad { background: var(--bad); } .pill.mid { background: var(--db); }
+.gloss { columns: 2 280px; column-gap: 28px; margin: 0; padding: 0; list-style: none; font-size: 14px; }
+.gloss li { break-inside: avoid; padding: 4px 0; }
+.gloss b { font-family: var(--f-mono); font-size: 13px; }
+footer { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">mimidoro/tflab-aws · network &amp; security</span>
+    <h1>From the VPC subnets down to the VXLAN tunnel</h1>
+    <p class="lede">How a request reaches a pod and the database in Sydney, which control allows each hop, what is encrypted, and why each choice was made. Melbourne is the same design on <code>10.40.0.0/16</code> with pods on <code>10.201.0.0/16</code>. Step through the packet walk, click any box, and drag, scroll or pinch to zoom.</p>
+    <div class="meta"><span>VPC 10.20.0.0/16 · 2 AZs</span><span>Pods 10.200.0.0/16 · /24 per node</span><span>Cilium 1.20.3 · VXLAN UDP 8472 · kube-proxy replaced</span><span>Example IPs from the live cluster, 21 Oct 2026</span></div>
+  </header>
+
+  <nav class="views" aria-label="Network views" id="views"></nav>
+
+  <div class="stage">
+    <div class="canvas">
+      <svg id="svg" viewBox="0 0 1400 980" role="img" aria-label="Sydney VPC, subnets, nodes, pods and traffic paths">
+        <g id="vp"></g>
+      </svg>
+      <div class="tools" aria-label="Zoom controls">
+        <button type="button" id="zin" aria-label="Zoom in">+</button>
+        <button type="button" id="zout" aria-label="Zoom out">−</button>
+        <button type="button" id="zfit" aria-label="Reset view">⤢</button>
+      </div>
+      <span class="hint">drag · scroll · pinch to zoom</span>
+      <div class="viewnote" id="viewnote" aria-live="polite"></div>
+    </div>
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </div>
+
+  <section aria-labelledby="addr">
+    <h2 id="addr">Address plan</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Range</th><th>Sydney</th><th>Melbourne</th><th>Size</th><th>Holds</th><th>Route to internet</th></tr></thead>
+      <tbody>
+        <tr><td>VPC</td><td class="mono">10.20.0.0/16</td><td class="mono">10.40.0.0/16</td><td class="mono">65,536</td><td>everything below</td><td>-</td></tr>
+        <tr><td>Public a / b</td><td class="mono">10.20.200.0/24 · .201.0/24</td><td class="mono">10.40.200.0/24 · .201.0/24</td><td class="mono">251 usable</td><td>ALB nodes, NAT instance (a)</td><td>Internet gateway</td></tr>
+        <tr><td>Private a / b</td><td class="mono">10.20.0.0/20 · .16.0/20</td><td class="mono">10.40.0.0/20 · .16.0/20</td><td class="mono">4,091 usable</td><td>EKS nodes, control-plane ENIs</td><td>NAT instance in public a</td></tr>
+        <tr><td>Database a / b</td><td class="mono">10.20.210.0/24 · .211.0/24</td><td class="mono">10.40.210.0/24 · .211.0/24</td><td class="mono">251 usable</td><td>RDS (subnet group needs 2 AZs)</td><td><span class="pill ok">none</span></td></tr>
+        <tr><td>Pods (Cilium cluster-pool)</td><td class="mono">10.200.0.0/16</td><td class="mono">10.201.0.0/16</td><td class="mono">/24 per node</td><td>pod IPs, never in the VPC route tables</td><td>SNAT to node IP</td></tr>
+        <tr><td>Services</td><td class="mono" colspan="2">EKS-assigned (172.20.0.0/16 for a 10.x VPC)</td><td class="mono">-</td><td>ClusterIPs, resolved by eBPF on each node</td><td>-</td></tr>
+        <tr><td>NodePorts</td><td class="mono" colspan="2">30080 web · 30081 api</td><td class="mono">-</td><td>ALB targets (instance mode)</td><td>-</td></tr>
+        <tr><td>Link-local</td><td class="mono" colspan="2">169.254.170.23:80 Pod Identity · 169.254.169.254 IMDS</td><td class="mono">-</td><td>on every node</td><td>-</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="sg">
+    <h2 id="sg">Security groups (stateful, per ENI)</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Group</th><th>Inbound</th><th>Outbound</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">tflab-syd-alb</td><td>443, 80 from 0.0.0.0/0</td><td>30080–30081 to the VPC CIDR only</td><td>Public edge; 80 only redirects to 443. It can reach nothing but the two NodePorts.</td></tr>
+        <tr><td class="mono">node (EKS module)</td><td>30080–30081 from the ALB SG · UDP 8472 from itself (VXLAN) · 1025–65535 + 53 from itself · 443/10250/4443/6443/8443/9443/10251 from the cluster SG</td><td>all</td><td>Recommended EKS rules plus the two rules this design adds: the VXLAN tunnel and the ALB NodePorts.</td></tr>
+        <tr><td class="mono">cluster (EKS)</td><td>443 from nodes</td><td>to nodes (kubelet, webhooks)</td><td>Control plane ↔ nodes. Webhooks run on the host network because the control plane can't reach overlay pod IPs.</td></tr>
+        <tr><td class="mono">tflab-syd-db</td><td>5432 from the node SG only</td><td>-</td><td>Pod traffic leaves with the node IP (eBPF masquerade), so a node-SG reference is the tightest rule possible without security groups for pods.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="cnp">
+    <h2 id="cnp">Cilium network policies (namespace app, identity-based)</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Policy</th><th>Ingress</th><th>Egress</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">web</td><td>world, host, remote-node → 8080</td><td><code>[{}]</code> - nothing</td><td>Static site can't call out at all.</td></tr>
+        <tr><td class="mono">api</td><td>world, host, remote-node → 8080</td><td>kube-dns:53 · VPC CIDR:5432 · <b>host</b>:80</td><td>DNS, the database, and Pod Identity credentials. Everything else is dropped and counted by Hubble.</td></tr>
+        <tr><td class="mono">db-init</td><td>-</td><td>kube-dns:53 · VPC CIDR:5432 · host:80 · world:443</td><td>One extra hole: Secrets Manager over the NAT, for the master secret.</td></tr>
+        <tr><td class="mono">drill-db-block</td><td>-</td><td>egressDeny 0.0.0.0/0:5432</td><td>Drill and fencing tool: cuts the API from any database (failover, promote, failback).</td></tr>
+      </tbody>
+    </table></div>
+    <p class="lede">Why ingress lists <code>world, host, remote-node</code>: the ALB is outside the cluster (world); NodePort traffic forwarded by eBPF arrives from the node it entered (host) or another node (remote-node). Other namespaces (kube-system, chaos-mesh, amazon-cloudwatch) have no policies yet - see the risk register.</p>
+  </section>
+
+  <section aria-labelledby="enc">
+    <h2 id="enc">Encryption and authentication by hop</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Hop</th><th>Transport</th><th>Authenticated by</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>Browser → ALB</td><td>TLS 1.3/1.2 (<code>ELBSecurityPolicy-TLS13-1-2-2021-06</code>), ACM cert</td><td>server cert; HTTP→HTTPS 301; invalid headers dropped</td><td><span class="pill ok">encrypted</span></td></tr>
+        <tr><td>ALB → node NodePort</td><td>HTTP inside the VPC</td><td>SG reference (ALB SG only)</td><td><span class="pill mid">plaintext in VPC</span></td></tr>
+        <tr><td>Node → pod (other node)</td><td>VXLAN UDP 8472, not encrypted</td><td>Cilium identity in the VXLAN header + policy</td><td><span class="pill mid">plaintext in VPC</span></td></tr>
+        <tr><td>API → Pod Identity agent</td><td>HTTP to 169.254.170.23 on the same node</td><td>projected service-account token</td><td><span class="pill ok">node-local</span></td></tr>
+        <tr><td>Agent → EKS Auth API</td><td>TLS via NAT</td><td>node IAM role</td><td><span class="pill ok">encrypted</span></td></tr>
+        <tr><td>API → RDS</td><td>TLS verify-full (RDS CA bundle in the image)</td><td>15-minute IAM auth token (SigV4), no password</td><td><span class="pill ok">encrypted</span></td></tr>
+        <tr><td>Sydney RDS → Melbourne replica</td><td>AWS cross-region replication</td><td>AWS-managed</td><td><span class="pill ok">encrypted</span></td></tr>
+        <tr><td>Storage</td><td>RDS: aws/rds (Sydney), customer key with rotation (Melbourne) · state S3: SSE · ECR: AES-256 · EKS secrets: EKS default</td><td>KMS</td><td><span class="pill ok">at rest</span></td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="dec">
+    <h2 id="dec">Decisions and justifications</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Decision</th><th>Winner (chosen)</th><th>Runner-up</th><th>Avoid</th><th>Why</th></tr></thead>
+      <tbody id="decrows"></tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="risk">
+    <h2 id="risk">Risk register</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Risk</th><th>Exposure</th><th>Today's control</th><th>Next step</th><th>Rating</th></tr></thead>
+      <tbody id="riskrows"></tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="gl">
+    <h2 id="gl">Glossary</h2>
+    <ul class="gloss" id="gloss"></ul>
+  </section>
+
+  <footer>Source of truth: <code>infra/modules/core/network.tf</code>, <code>eks.tf</code>, <code>alb.tf</code>, <code>rds.tf</code>, <code>k8s/values/cilium.yaml.tftpl</code>, <code>k8s/charts/app/templates/network-policy.yaml</code>. Companion page: <code>docs/ARCH-tflabAWS-TwoRegionEKS-20261021.html</code>.</footer>
+</div>
+
+<script>
+(() => {
+  const NS = "http://www.w3.org/2000/svg";
+  const $ = (s) => document.querySelector(s);
+  const vp = $("#vp");
+  const el = (tag, attrs = {}, parent) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (parent) parent.appendChild(e); return e; };
+  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+  // ------------------------------------------------------------------ zones
+  const Z = [
+    { c: "vpc", x: 30, y: 130, w: 1340, h: 820, t: "VPC tflab-syd · 10.20.0.0/16 · ap-southeast-2" },
+    { c: "az", x: 50, y: 160, w: 640, h: 770, t: "AZ a" },
+    { c: "az", x: 710, y: 160, w: 640, h: 770, t: "AZ b" },
+    { c: "pub", x: 70, y: 190, w: 600, h: 130, t: "public-a 10.20.200.0/24 · route 0.0.0.0/0 → IGW" },
+    { c: "pub", x: 730, y: 190, w: 600, h: 130, t: "public-b 10.20.201.0/24 · route 0.0.0.0/0 → IGW" },
+    { c: "priv", x: 70, y: 345, w: 600, h: 400, t: "private-a 10.20.0.0/20 · route 0.0.0.0/0 → NAT" },
+    { c: "priv", x: 730, y: 345, w: 600, h: 400, t: "private-b 10.20.16.0/20 · route 0.0.0.0/0 → NAT" },
+    { c: "nodez", x: 90, y: 375, w: 560, h: 350, t: "node A ip-10-20-5-179 · pods 10.200.1.0/24" },
+    { c: "nodez", x: 750, y: 375, w: 560, h: 350, t: "node B ip-10-20-24-241 · pods 10.200.0.0/24" },
+    { c: "dbz", x: 70, y: 770, w: 600, h: 150, t: "database-a 10.20.210.0/24 · no internet route" },
+    { c: "dbz", x: 730, y: 770, w: 600, h: 150, t: "database-b 10.20.211.0/24 · no internet route" },
+  ];
+
+  // ------------------------------------------------------------------ nodes
+  const N = [
+    { id: "client", x: 40, y: 40, w: 210, h: 66, t: "Browser", s: "public IP · HTTPS", k: "ext", kind: "Outside AWS" },
+    { id: "igw", x: 560, y: 30, w: 200, h: 66, t: "Internet gateway", s: "public subnets only", k: "ext", kind: "VPC edge" },
+    { id: "aws", x: 1000, y: 30, w: 360, h: 66, t: "AWS APIs (regional)", s: "EKS Auth · ECR · Secrets Mgr · STS", k: "ext", kind: "Outside the VPC" },
+    { id: "albA", x: 95, y: 235, w: 230, h: 62, t: "ALB node", s: "10.20.200.x · SG alb", k: "pub", kind: "Public subnet a" },
+    { id: "nat", x: 400, y: 235, w: 250, h: 62, t: "NAT instance", s: "fck-nat t4g.nano · EIP", k: "pub", kind: "Public subnet a" },
+    { id: "albB", x: 755, y: 235, w: 230, h: 62, t: "ALB node", s: "10.20.201.x · SG alb", k: "pub", kind: "Public subnet b" },
+    { id: "cp", x: 785, y: 30, w: 195, h: 66, t: "EKS API endpoint", s: "public + private ENIs", k: "ext", kind: "AWS-managed control plane" },
+    { id: "ethA", x: 110, y: 405, w: 250, h: 58, t: "eth0 10.20.5.179", s: "NodePort 30080/30081", k: "priv", kind: "Node A" },
+    { id: "ciliumA", x: 380, y: 405, w: 250, h: 58, t: "cilium agent (eBPF)", s: "LB · policy · masquerade", k: "priv", kind: "Node A" },
+    { id: "vxA", x: 380, y: 480, w: 250, h: 52, t: "cilium_vxlan", s: "UDP 8472 · VNI = identity", k: "priv", kind: "Node A" },
+    { id: "pidA", x: 110, y: 480, w: 250, h: 52, t: "Pod Identity agent", s: "169.254.170.23:80 (host)", k: "priv", kind: "Node A" },
+    { id: "webA", x: 110, y: 560, w: 160, h: 58, t: "web", s: "10.200.1.198", k: "pod", kind: "Pod · node A" },
+    { id: "apiA", x: 290, y: 560, w: 160, h: 58, t: "api", s: "10.200.1.98", k: "pod", kind: "Pod · node A" },
+    { id: "dnsA", x: 470, y: 560, w: 160, h: 58, t: "CoreDNS", s: "kube-dns", k: "pod", kind: "Pod · node A" },
+    { id: "hostnetA", x: 110, y: 640, w: 520, h: 64, t: "host-network pods", s: "cilium · metrics-server :4443 · chaos-mesh :9443", k: "priv", kind: "Node A" },
+    { id: "ethB", x: 770, y: 405, w: 250, h: 58, t: "eth0 10.20.24.241", s: "NodePort 30080/30081", k: "priv", kind: "Node B" },
+    { id: "ciliumB", x: 1040, y: 405, w: 250, h: 58, t: "cilium agent (eBPF)", s: "LB · policy · masquerade", k: "priv", kind: "Node B" },
+    { id: "vxB", x: 770, y: 480, w: 250, h: 52, t: "cilium_vxlan", s: "UDP 8472 · decap", k: "priv", kind: "Node B" },
+    { id: "pidB", x: 1040, y: 480, w: 250, h: 52, t: "Pod Identity agent", s: "169.254.170.23:80 (host)", k: "priv", kind: "Node B" },
+    { id: "webB", x: 770, y: 560, w: 160, h: 58, t: "web", s: "10.200.0.176", k: "pod", kind: "Pod · node B" },
+    { id: "apiB", x: 950, y: 560, w: 160, h: 58, t: "api", s: "10.200.0.34", k: "pod", kind: "Pod · node B" },
+    { id: "initB", x: 1130, y: 560, w: 160, h: 58, t: "db-init (Job)", s: "pre-upgrade hook", k: "pod", kind: "Pod · node B" },
+    { id: "rds", x: 110, y: 815, w: 320, h: 70, t: "RDS PostgreSQL writer", s: "10.20.210.x:5432 · SG db", k: "db", kind: "Database subnet a" },
+    { id: "rdsB", x: 770, y: 815, w: 320, h: 70, t: "(subnet group spare AZ)", s: "used if the DB moves AZ", k: "db", kind: "Database subnet b" },
+  ];
+  const byId = Object.fromEntries(N.map((n) => [n.id, n]));
+
+  const D = {
+    client: { what: "Any client on the internet. Resolves app.mimidog.click through Route 53 to the ALB's public addresses.", ctl: "Only 443 and 80 are open to the world, both on the ALB." },
+    igw: { what: "Internet gateway attached to the VPC; only the public route tables point at it.", ctl: "Private and database subnets have no route to it. Nothing in them has a public IP (map_public_ip_on_launch = false)." },
+    aws: { what: "Regional AWS endpoints the cluster calls: EKS Auth (Pod Identity), ECR (image pulls), Secrets Manager (db-init), STS, CloudWatch.", ctl: "Reached over TLS via the NAT instance; IAM decides what each caller may do.", why: "Interface VPC endpoints would remove the NAT dependency but cost ~USD 0.01/hr per AZ per service - more than the whole NAT for six services." },
+    albA: { what: "One of the ALB's nodes (one per public subnet). Terminates TLS with the ACM certificate and forwards to node NodePorts.", ctl: "SG alb: inbound 443/80 from anywhere, outbound only 30080–30081 to the VPC CIDR. TLS 1.3/1.2 policy, invalid headers dropped.", why: "Terraform owns the ALB (not an in-cluster controller) so teardown can't orphan it; instance targets because overlay pod IPs aren't routable." },
+    albB: { what: "Second ALB node in public-b; the ALB balances across both AZs.", ctl: "Same SG and listener rules." },
+    nat: { what: "fck-nat on t4g.nano with an Elastic IP; both private route tables send 0.0.0.0/0 here.", ctl: "Source/dest check off; SG from the module. Database subnets don't use it.", why: "About USD 0.005/hr versus about USD 0.06/hr per managed NAT Gateway.", risk: "Single point of failure for egress: if it dies, Pod Identity, image pulls and Secrets Manager stop until the next apply." },
+    cp: { what: "EKS places control-plane ENIs in the private subnets; the API endpoint is also public (IAM-authenticated) so GitHub-hosted runners can deploy.", ctl: "Access entries (authentication_mode = API): the CI role, the apply caller and your console role. Audit, API and authenticator logs kept 1 day.", risk: "Public endpoint open to 0.0.0.0/0 by default; narrow api_allowed_cidrs to your IP for more safety." },
+    ethA: { what: "Node A's primary ENI in private-a. NodePorts 30080 (web) and 30081 (api) listen here for the ALB.", ctl: "Node SG allows 30080–30081 only from the ALB SG. IMDSv2 required, hop limit 1 - pods on the overlay can't reach the instance metadata service." },
+    ethB: { what: "Node B's primary ENI in private-b.", ctl: "Same SG and metadata settings." },
+    ciliumA: { what: "Cilium agent: replaces kube-proxy (eBPF service load-balancing), enforces policy by identity, masquerades pod egress to the node IP, exports Hubble flows.", ctl: "Every flow gets a verdict (FORWARDED / DROPPED) visible in Hubble.", why: "One eBPF datapath for routing, load-balancing and policy, with flow-level visibility that drills depend on." },
+    ciliumB: { what: "Node B's agent, same role.", ctl: "Policies are compiled per endpoint on each node." },
+    vxA: { what: "VXLAN tunnel device. Pod-to-pod traffic between nodes is wrapped in UDP 8472 between the node IPs; the source pod's security identity rides in the VXLAN header.", ctl: "Node SG allows UDP 8472 only between nodes (self rule). Not encrypted.", why: "Overlay keeps pod IPs out of the VPC: no ENI/IP limits per instance and no subnet exhaustion.", risk: "Payloads cross the VPC in clear text. WireGuard transparent encryption is backlog item 4." },
+    vxB: { what: "Receiving end: decapsulates and delivers to the destination pod after the policy check.", ctl: "Ingress policy is enforced on the destination node using the identity carried in the header." },
+    pidA: { what: "EKS Pod Identity agent on the node's link-local address. Exchanges a pod's projected service-account token for short-lived role credentials.", ctl: "Cilium sees it as the host entity, so policies allow it with toEntities: [host] on port 80.", why: "Per-service-account roles, no static keys, no IRSA OIDC provider per cluster.", risk: "Learned on the first build: a toCIDR rule never matches it, which silently broke API credentials." },
+    pidB: { what: "Node B's agent.", ctl: "Same." },
+    webA: { what: "nginx serving the React build on 8080.", ctl: "Policy web: ingress 8080 from world/host/remote-node; egress [{}] - no outbound at all. Read-only filesystem, no service-account token, non-root." },
+    webB: { what: "Second web replica (topology spread across AZs).", ctl: "Same policy." },
+    apiA: { what: ".NET API on 8080; pod identity role tflab-syd-api.", ctl: "Policy api: egress only DNS, the VPC CIDR on 5432, and host:80. IAM: rds-db:connect as tflab_api in this region only." },
+    apiB: { what: "Second API replica.", ctl: "Same policy and role." },
+    dnsA: { what: "CoreDNS (EKS add-on) answering kube-dns; forwards to the VPC resolver.", ctl: "API and db-init policies allow 53 to pods labelled k8s-app=kube-dns only." },
+    initB: { what: "One-shot Job before each install/upgrade: reads the master secret, creates the tflab_api role and schema.", ctl: "Policy db-init adds world:443 for Secrets Manager. Role can read exactly one secret.", risk: "Runs before Helm updates policies - an old broken policy blocks it (first-build lesson)." },
+    hostnetA: { what: "Pods on the host network: Cilium itself, metrics-server (4443) and the Chaos Mesh controller (9443).", ctl: "The EKS control plane can only reach node IPs, so admission webhooks must live here; node SG allows those ports from the cluster SG only.", risk: "Host-network pods share the node's network identity and can reach IMDS. Chaos Mesh's daemon is privileged by design. Dashboard is disabled." },
+    rds: { what: "PostgreSQL writer in database-a; subnet group spans both database subnets.", ctl: "Not publicly accessible; SG db allows 5432 from the node SG only; TLS verify-full; IAM auth for the app; storage encrypted.", why: "Pod egress is masqueraded to the node IP, so the node SG is the narrowest source a security group can express with an overlay." },
+    rdsB: { what: "Spare AZ in the subnet group (required by RDS). Used if the instance is moved or made Multi-AZ.", ctl: "Same route table: no internet route." },
+  };
+
+  // ------------------------------------------------------------------ edges
+  const E = [
+    { id: "w1", a: "client", b: "igw", c: "flow", v: ["walk"], label: "TLS :443" },
+    { id: "w2", a: "igw", b: "albA", c: "flow", v: ["walk"] },
+    { id: "w3", a: "albA", b: "ethA", c: "flow", v: ["walk", "layout"], label: "HTTP :30081" },
+    { id: "w4", a: "ethA", b: "ciliumA", c: "flow", v: ["walk"], label: "eBPF DNAT" },
+    { id: "w5", a: "ciliumA", b: "vxA", c: "flow", v: ["walk"] },
+    { id: "w6", a: "vxA", b: "vxB", c: "vx", v: ["walk", "overlay", "layout"], label: "VXLAN UDP 8472 10.20.5.179 → 10.20.24.241" },
+    { id: "w7", a: "vxB", b: "apiB", c: "flow", v: ["walk", "overlay"], label: "→ 10.200.0.34:8080" },
+    { id: "w8", a: "apiB", b: "pidB", c: "flow", v: ["walk", "egress"], label: "creds (host:80)" },
+    { id: "w9", a: "apiB", b: "rds", c: "flow", v: ["walk", "layout"], label: "TLS :5432 · SNAT to node IP" },
+    { id: "o1", a: "apiA", b: "dnsA", c: "flow", v: ["overlay"], label: "same node: no tunnel" },
+    { id: "o2", a: "webB", b: "vxB", c: "flow", v: ["overlay"] },
+    { id: "g1", a: "pidB", b: "nat", c: "egress", v: ["egress"], label: "EKS Auth via NAT" },
+    { id: "g2", a: "initB", b: "nat", c: "egress", v: ["egress"], label: "Secrets Manager :443" },
+    { id: "g3", a: "nat", b: "igw", c: "egress", v: ["egress"], label: "SNAT to EIP" },
+    { id: "g4", a: "igw", b: "aws", c: "egress", v: ["egress"], label: "TLS" },
+    { id: "g5", a: "ethA", b: "nat", c: "egress", v: ["egress"], label: "image pulls" },
+    { id: "d1", a: "webA", b: "dnsA", c: "deny", v: ["security"], label: "web egress: denied" },
+    { id: "d2", a: "apiA", b: "hostnetA", c: "deny", v: ["security"], label: "IMDS: hop limit 1" },
+    { id: "d3", a: "rds", b: "igw", c: "deny", v: ["egress", "security"], label: "no route" },
+    { id: "s1", a: "cp", b: "hostnetA", c: "egress", v: ["security", "layout"], label: "webhooks → host ports" },
+  ];
+
+  const WALK = [
+    { e: ["w1", "w2"], n: ["client", "igw", "albA"], h: "1 · Browser → ALB", src: "client:ephemeral", dst: "ALB public IP:443", ctl: "SG alb inbound 443 from 0.0.0.0/0", enc: "TLS 1.3, ACM certificate; port 80 gets a 301 to HTTPS", see: "ALB metrics HTTPCode_*, alarms tflab-syd-alb-*" },
+    { e: ["w3"], n: ["albA", "ethA"], h: "2 · ALB → node NodePort", src: "10.20.200.x", dst: "10.20.5.179:30081 (/api/*) or :30080", ctl: "SG alb outbound 30080–30081 → VPC; node SG inbound from SG alb", enc: "plaintext inside the VPC", see: "Target group health: tflab-syd-api-unhealthy-targets" },
+    { e: ["w4"], n: ["ethA", "ciliumA"], h: "3 · eBPF service load-balancing", src: "10.20.200.x", dst: "picks an api endpoint - here 10.200.0.34 on node B", ctl: "kube-proxy replacement in the Cilium datapath; no iptables", enc: "-", see: "cilium-dbg service list (in the agent pod)" },
+    { e: ["w5", "w6"], n: ["ciliumA", "vxA", "vxB"], h: "4 · Cross-node: VXLAN tunnel", src: "outer 10.20.5.179 → 10.20.24.241 UDP 8472", dst: "inner → 10.200.0.34:8080, source identity in the header", ctl: "node SG UDP 8472 self rule", enc: "not encrypted (WireGuard = backlog 4)", see: "hubble observe --to-pod app/api-… shows the flow and node names" },
+    { e: ["w7"], n: ["vxB", "apiB"], h: "5 · Policy check at the destination", src: "identity world / remote-node", dst: "api pod :8080", ctl: "CiliumNetworkPolicy api: ingress world, host, remote-node → 8080", enc: "-", see: "hubble observe --verdict DROPPED (would show a deny here)" },
+    { e: ["w8"], n: ["apiB", "pidB"], h: "6 · API gets AWS credentials", src: "10.200.0.34", dst: "169.254.170.23:80 (Pod Identity agent, host entity)", ctl: "policy api egress toEntities: [host] port 80; IAM role tflab-syd-api", enc: "node-local; the agent calls EKS Auth over TLS via the NAT", see: "API log 'Unable to retrieve credentials' if blocked" },
+    { e: ["w9"], n: ["apiB", "rds"], h: "7 · API → PostgreSQL", src: "SNAT to 10.20.24.241 (eBPF masquerade)", dst: "10.20.210.x:5432", ctl: "policy api egress VPC CIDR:5432; SG db inbound 5432 from node SG; IAM rds-db:connect as tflab_api", enc: "TLS verify-full + 15-minute IAM token, no password", see: "/api/ready → {db: ok, writable: true}" },
+  ];
+
+  const VIEWS = [
+    { id: "layout", name: "Layout", title: "Three subnet tiers per AZ, pods outside the VPC address space", note: "Public subnets hold only the ALB and NAT. Nodes live in /20 private subnets. The database tier has no internet route at all. Pods get IPs from Cilium's own 10.200.0.0/16 pool, a /24 per node, which never appears in a VPC route table.", focus: null },
+    { id: "walk", name: "Packet walk", title: "", note: "", focus: [] },
+    { id: "overlay", name: "Cilium overlay", title: "Same node: direct. Different node: VXLAN.", note: "Pods on the same node talk through the eBPF datapath directly. Across nodes, Cilium wraps the packet in VXLAN (UDP 8472) between node IPs and carries the source pod's security identity, so the destination node can enforce policy by identity, not IP.", focus: ["ciliumA", "ciliumB", "vxA", "vxB", "apiA", "dnsA", "apiB", "webB", "ethA", "ethB"] },
+    { id: "egress", name: "Egress", title: "Everything outbound goes through one NAT instance", note: "Pod Identity (EKS Auth), image pulls and db-init's Secrets Manager call leave through the NAT instance and its Elastic IP. The database tier has no route out. Pod egress is masqueraded to the node IP before it leaves the node.", focus: ["pidB", "initB", "nat", "igw", "aws", "ethA", "rds", "apiB"] },
+    { id: "security", name: "Security layers", title: "Five layers between the internet and the data", note: "Org guardrail policy (regions, sizes) → IAM (roles per service account, IAM DB auth) → security groups (ALB → NodePorts, nodes → DB) → Cilium identity policies (per pod, default-deny egress) → TLS (edge and database). Red paths are denied by design.", focus: ["albA", "ethA", "webA", "apiA", "hostnetA", "cp", "rds", "igw", "dnsA"] },
+  ];
+
+  const DEC = [
+    ["Pod networking", "Cilium overlay (VXLAN)", "Cilium ENI mode", "VPC CNI + Cilium chaining (not a CNI replacement)", "Requested CNI replacement without ENI mode; pod IPs don't consume VPC addresses or ENI slots (t4g.medium caps VPC-CNI pods at 17)."],
+    ["Service routing", "eBPF kube-proxy replacement", "kube-proxy (iptables)", "Running both", "One datapath; faster lookups; NodePorts handled in eBPF."],
+    ["Load balancer targets", "Instance targets on fixed NodePorts", "AWS Load Balancer Controller with IP targets", "Service type LoadBalancer created in-cluster", "Overlay pod IPs aren't VPC-routable; a Terraform-owned ALB can't be orphaned by teardown."],
+    ["Egress", "Single NAT instance (fck-nat)", "VPC interface endpoints for ECR/STS/EKS Auth", "Managed NAT Gateway per AZ", "Cost: ~USD 0.005/hr vs ~0.06/hr per gateway or ~0.01/hr per endpoint per AZ."],
+    ["Subnet tiers", "public /24 · private /20 · database /24 × 2 AZs", "Single private tier", "Nodes in public subnets", "The database tier has no route out; nodes have no public IPs; /20s leave room to grow."],
+    ["Database source rule", "SG db ← node SG", "Security groups for pods", "CIDR 10.20.0.0/16", "SG-for-pods needs VPC-CNI branch ENIs; with masquerade the node SG is the tightest SG source available."],
+    ["Pod-level control", "CiliumNetworkPolicy by identity, default-deny egress", "Kubernetes NetworkPolicy", "No policies", "Identity survives IP churn; host/world/remote-node entities; drops are counted for alarms."],
+    ["Credentials", "EKS Pod Identity", "IRSA", "Node role for everything", "Per service account, short-lived, no OIDC provider per cluster."],
+    ["Database auth", "IAM token + TLS verify-full", "Password from Secrets Manager", "Password in config", "No application password exists to leak or rotate."],
+    ["EKS API endpoint", "Public + private, IAM-authenticated", "Private only + self-hosted runner", "Public with aws-auth ConfigMap", "GitHub-hosted runners need reachability; access entries replace aws-auth."],
+    ["Instance metadata", "IMDSv2 required, hop limit 1", "Hop limit 2", "IMDSv1", "Overlay pods can't reach node credentials."],
+  ];
+
+  const RISK = [
+    ["Pod-to-pod and ALB→pod traffic in clear text", "inside the VPC only", "SGs + Cilium identity policy", "Cilium WireGuard (backlog 4); ALB→node TLS later", "mid"],
+    ["Public EKS API endpoint (0.0.0.0/0)", "internet, IAM-authenticated", "access entries; audit logs", "set api_allowed_cidrs to your IP", "mid"],
+    ["No WAF on the ALB", "public web/API", "input validation, rate of a lab", "AWS WAF managed rules when exposed for real", "mid"],
+    ["Single NAT instance", "egress for both AZs", "drills cover it; nightly rebuild", "NAT per AZ or endpoints for EKS Auth/ECR", "mid"],
+    ["No policies outside namespace app", "kube-system, chaos-mesh, amazon-cloudwatch", "small, known workloads", "namespace default-deny + allow lists", "mid"],
+    ["Host-network and privileged pods", "Cilium, Chaos Mesh daemon, webhooks", "dashboard off; SG limits webhook ports to the control plane", "remove Chaos Mesh outside game days", "mid"],
+    ["IAM rds-db:connect is region-wide for tflab_api", "any DB in the region with that user", "only lab DBs exist; enables DR rebuilds", "tag-based condition if more DBs appear", "ok"],
+    ["No VPC flow logs", "forensics", "Hubble flows inside the cluster", "flow logs to S3 during game days", "mid"],
+    ["CloudWatch agent image tracks latest", "supply chain", "public ECR image from AWS", "pin by digest (backlog 1)", "mid"],
+  ];
+
+  const GLOSS = [
+    ["ACM", "AWS Certificate Manager"], ["ALB", "Application Load Balancer"], ["AZ", "Availability Zone"], ["CIDR", "IP address range notation, e.g. 10.20.0.0/16"],
+    ["CNI", "Container Network Interface"], ["DNAT / SNAT", "rewriting a packet's destination / source address"], ["eBPF", "in-kernel programs Cilium uses for networking and policy"],
+    ["EIP", "Elastic IP - a static public IPv4 address"], ["ENI", "Elastic Network Interface"], ["Hubble", "Cilium's flow observability layer"],
+    ["IGW", "Internet gateway"], ["IMDS", "Instance Metadata Service (169.254.169.254)"], ["IRSA", "IAM Roles for Service Accounts"], ["KMS", "Key Management Service"],
+    ["Masquerade", "SNAT of pod traffic to the node IP when it leaves the cluster"], ["NAT", "Network Address Translation"], ["NodePort", "a fixed port opened on every node for a Service"],
+    ["SG", "Security group - stateful firewall on an ENI"], ["SigV4", "AWS request-signing scheme used for IAM DB tokens"], ["TLS", "Transport Layer Security"],
+    ["VNI", "VXLAN network identifier - Cilium puts the security identity here"], ["VPC", "Virtual Private Cloud"], ["VXLAN", "Virtual Extensible LAN - UDP-encapsulated layer-2 overlay"], ["WAF", "Web Application Firewall"],
+  ];
+
+  // ------------------------------------------------------------------ draw
+  const g0 = el("g", {}, vp);
+  for (let x = 0; x <= 1400; x += 50) el("line", { x1: x, y1: 0, x2: x, y2: 980, class: "grid-line" }, g0);
+  for (let y = 0; y <= 980; y += 50) el("line", { x1: 0, y1: y, x2: 1400, y2: y, class: "grid-line" }, g0);
+  const zg = el("g", {}, vp);
+  const zcolor = { vpc: "var(--fg)", az: "var(--muted)", pub: "var(--pub)", priv: "var(--priv)", dbz: "var(--db)", nodez: "var(--pod)" };
+  for (const z of Z) {
+    const g = el("g", { class: "zone " + z.c }, zg);
+    el("rect", { x: z.x, y: z.y, width: z.w, height: z.h, rx: 10 }, g);
+    const t = el("text", { x: z.x + 12, y: z.y + 18, fill: zcolor[z.c] }, g);
+    t.textContent = z.t;
+  }
+  const eg = el("g", {}, vp), ng = el("g", {}, vp);
+  const center = (n) => [n.x + n.w / 2, n.y + n.h / 2];
+  const anchor = (n, tx, ty) => { const [cx, cy] = center(n); const dx = tx - cx, dy = ty - cy; const s = Math.min((n.w / 2) / Math.abs(dx || 1e-6), (n.h / 2) / Math.abs(dy || 1e-6)); return [cx + dx * s, cy + dy * s]; };
+  const edgeEls = {};
+  for (const e of E) {
+    const a = byId[e.a], b = byId[e.b];
+    const p1 = anchor(a, ...center(b)), p2 = anchor(b, ...center(a));
+    const g = el("g", { class: "edge " + e.c }, eg);
+    const mx = (p1[0] + p2[0]) / 2, my = (p1[1] + p2[1]) / 2;
+    const bend = e.id === "w6" ? -22 : e.id === "w9" ? 60 : 0;
+    el("path", { d: `M${p1[0]},${p1[1]} Q${mx},${my + bend} ${p2[0]},${p2[1]}` }, g);
+    if (e.label) { const t = el("text", { x: mx, y: my + bend / 2 - 6, "text-anchor": "middle" }, g); t.textContent = e.label; }
+    edgeEls[e.id] = g;
+  }
+  const nodeEls = {};
+  for (const n of N) {
+    const g = el("g", { class: "node " + n.k, tabindex: 0, role: "button", "aria-label": n.t + " - details" }, ng);
+    el("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 8, class: "card" }, g);
+    const t = el("text", { x: n.x + 12, y: n.y + 24, class: "t" }, g); t.textContent = n.t;
+    const s = el("text", { x: n.x + 12, y: n.y + 44, class: "s" }, g); s.textContent = n.s;
+    g.addEventListener("click", () => select(n.id));
+    g.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); select(n.id); } });
+    nodeEls[n.id] = g;
+  }
+
+  // ------------------------------------------------------------------ panel
+  let sel = null;
+  const select = (id) => {
+    if (sel) nodeEls[sel].classList.remove("sel");
+    sel = id; nodeEls[id].classList.add("sel");
+    const n = byId[id], d = D[id];
+    $("#panel").innerHTML = `<span class="kind">${esc(n.kind)}</span><h2>${esc(n.t)}</h2><dl>
+      <div><dt>What it is</dt><dd>${esc(d.what)}</dd></div>
+      <div><dt>Control</dt><dd>${esc(d.ctl)}</dd></div>
+      ${d.why ? `<div><dt>Why this way</dt><dd>${esc(d.why)}</dd></div>` : ""}
+      ${d.risk ? `<div class="warn"><dt>Risk / lesson</dt><dd>${esc(d.risk)}</dd></div>` : ""}</dl>`;
+  };
+
+  // ------------------------------------------------------------------ views
+  let step = 0, view = "layout";
+  const show = (nodes, edges, hotN = [], hotE = []) => {
+    const ns = nodes ? new Set(nodes) : null;
+    for (const [id, g] of Object.entries(nodeEls)) { g.classList.toggle("dim", !!ns && !ns.has(id)); g.classList.toggle("hot", hotN.includes(id)); }
+    for (const e of E) {
+      const g = edgeEls[e.id];
+      g.style.display = edges.includes(e.id) ? "" : "none";
+      g.classList.toggle("hot", hotE.includes(e.id));
+    }
+  };
+  const renderWalk = () => {
+    const w = WALK[step];
+    const shownE = WALK.slice(0, step + 1).flatMap((x) => x.e);
+    const shownN = [...new Set(WALK.slice(0, step + 1).flatMap((x) => x.n))];
+    show(shownN, shownE, w.n, w.e);
+    $("#viewnote").innerHTML = `<strong>${esc(w.h)}</strong>
+      <p><b>From</b> <code>${esc(w.src)}</code> <b>to</b> <code>${esc(w.dst)}</code></p>
+      <p><b>Allowed by:</b> ${esc(w.ctl)}</p><p><b>Encryption:</b> ${esc(w.enc)}</p><p><b>Observe:</b> ${esc(w.see)}</p>
+      <div class="step"><button type="button" id="prev" ${step === 0 ? "disabled" : ""}>← Previous hop</button>
+      <button type="button" id="next" ${step === WALK.length - 1 ? "disabled" : ""}>Next hop →</button><span>hop ${step + 1} of ${WALK.length}</span></div>`;
+    $("#prev").onclick = () => { step = Math.max(0, step - 1); renderWalk(); };
+    $("#next").onclick = () => { step = Math.min(WALK.length - 1, step + 1); renderWalk(); };
+  };
+  const applyView = (id, push) => {
+    const v = VIEWS.find((x) => x.id === id) || VIEWS[0];
+    view = v.id;
+    for (const b of $("#views").children) b.setAttribute("aria-pressed", String(b.dataset.v === v.id));
+    if (v.id === "walk") { renderWalk(); }
+    else {
+      show(v.focus, E.filter((e) => e.v.includes(v.id)).map((e) => e.id));
+      $("#viewnote").innerHTML = `<strong>${esc(v.title)}</strong><p>${esc(v.note)}</p>`;
+    }
+    if (push) { try { history.replaceState(null, "", "#" + v.id); } catch (_) {} }
+    try { localStorage.setItem("tflab-netsec-view", v.id); } catch (_) {}
+  };
+  for (const v of VIEWS) {
+    const b = document.createElement("button"); b.type = "button"; b.dataset.v = v.id; b.textContent = v.name;
+    b.addEventListener("click", () => applyView(v.id, true)); $("#views").appendChild(b);
+  }
+
+  // ------------------------------------------------------------------ zoom / pan / pinch
+  const svg = $("#svg"); let k = 1, tx = 0, ty = 0;
+  const VW = 1400, VH = 980;
+  const render = () => vp.setAttribute("transform", `translate(${tx},${ty}) scale(${k})`);
+  const toSvg = (cx, cy) => { const r = svg.getBoundingClientRect(); const s = Math.max(VW / r.width, VH / r.height); const ox = (r.width * s - VW) / 2, oy = (r.height * s - VH) / 2; return [(cx - r.left) * s - ox, (cy - r.top) * s - oy]; };
+  const zoomAt = (px, py, f) => { const nk = Math.min(5, Math.max(0.5, k * f)); tx = px - (px - tx) * (nk / k); ty = py - (py - ty) * (nk / k); k = nk; render(); };
+  svg.addEventListener("wheel", (ev) => { ev.preventDefault(); const [x, y] = toSvg(ev.clientX, ev.clientY); zoomAt(x, y, ev.deltaY < 0 ? 1.15 : 1 / 1.15); }, { passive: false });
+  const pts = new Map(); let last = null, pinch0 = null;
+  svg.addEventListener("pointerdown", (ev) => { if (ev.target.closest(".node")) return; svg.setPointerCapture(ev.pointerId); pts.set(ev.pointerId, [ev.clientX, ev.clientY]); svg.classList.add("dragging"); if (pts.size === 1) last = toSvg(ev.clientX, ev.clientY); if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), k }; } });
+  svg.addEventListener("pointermove", (ev) => { if (!pts.has(ev.pointerId)) return; pts.set(ev.pointerId, [ev.clientX, ev.clientY]); if (pts.size === 2 && pinch0) { const [a, b] = [...pts.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); const [mx, my] = toSvg((a[0] + b[0]) / 2, (a[1] + b[1]) / 2); zoomAt(mx, my, (pinch0.k * d / pinch0.d) / k); } else if (pts.size === 1 && last) { const p = toSvg(ev.clientX, ev.clientY); tx += p[0] - last[0]; ty += p[1] - last[1]; last = p; render(); } });
+  const end = (ev) => { pts.delete(ev.pointerId); if (pts.size < 2) pinch0 = null; if (!pts.size) { last = null; svg.classList.remove("dragging"); } else { const p = [...pts.values()][0]; last = toSvg(p[0], p[1]); } };
+  svg.addEventListener("pointerup", end); svg.addEventListener("pointercancel", end);
+  $("#zin").onclick = () => zoomAt(VW / 2, VH / 2, 1.25);
+  $("#zout").onclick = () => zoomAt(VW / 2, VH / 2, 0.8);
+  $("#zfit").onclick = () => { k = 1; tx = 0; ty = 0; render(); };
+
+  // ------------------------------------------------------------------ tables
+  $("#decrows").innerHTML = DEC.map((r) => `<tr><td><b>${esc(r[0])}</b></td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3])}</td><td>${esc(r[4])}</td></tr>`).join("");
+  const rate = { ok: ["low", "ok"], mid: ["medium", "mid"], bad: ["high", "bad"] };
+  $("#riskrows").innerHTML = RISK.map((r) => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3])}</td><td><span class="pill ${rate[r[4]][1]}">${rate[r[4]][0]}</span></td></tr>`).join("");
+  $("#gloss").innerHTML = GLOSS.map(([a, b]) => `<li><b>${esc(a)}</b> - ${esc(b)}</li>`).join("");
+
+  let start = (location.hash || "").slice(1);
+  if (!VIEWS.some((v) => v.id === start)) { try { start = localStorage.getItem("tflab-netsec-view") || "walk"; } catch (_) { start = "walk"; } }
+  applyView(start, false);
+  select("vxA");
+  render();
+})();
+</script>
+
+</body>
+</html>

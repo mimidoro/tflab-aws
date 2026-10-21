@@ -336,6 +336,8 @@ creates are denied, destroys still work.
 
 ## 10. Security and data posture
 
+**Network & security deep-dive:** `docs/ARCH-tflabAWS-NetSec-20261021.html` - address plan, security-group matrix, Cilium policies, VXLAN overlay, a step-through packet walk (browser -> ALB -> NodePort -> VXLAN -> pod -> Pod Identity -> RDS), encryption by hop, decisions (winner / runner-up / avoid) and the risk register.
+
 | Concern | Position |
 |---|---|
 | **Data classification** | Synthetic test data only (`items` table). Never load client or SkyCity data into this lab. |
